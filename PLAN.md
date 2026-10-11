@@ -3,7 +3,7 @@
 ## Progress
 P0
 - [x] 0 Setup
-- [ ] 1 Search layer + reality checks
+- [x] 1 Search layer + reality checks
 - [ ] 2 Squad engine + constraint checker
 - [ ] 3 Card renderer (web app design)
 - [ ] 4 Bot core: intro, listening, natural-language squad, Trip card
