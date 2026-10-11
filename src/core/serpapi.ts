@@ -104,6 +104,9 @@ export async function serpSearch(params: SerpParams, opts?: { log?: CallLogEntry
     return cached;
   }
 
+  // Tests and the simulator run with SERPAPI_OFFLINE=true: a cache miss fails instead of spending a search.
+  if (process.env.SERPAPI_OFFLINE === "true") throw new Error(`Offline and not cached: ${engine} ${summarize(params)}`);
+
   const url = new URL(ENDPOINT);
   for (const [k, v] of cleanParams(params)) url.searchParams.set(k, v);
   url.searchParams.set("api_key", process.env.SERPAPI_API_KEY!);

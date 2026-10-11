@@ -106,7 +106,7 @@ export function flightAllowed(constraints: Constraint[] | undefined, flight: Fli
   });
 }
 
-type Traveller = Person & { constraints?: Constraint[] };
+type Traveller = { name: string; city?: string; constraints?: Constraint[] };
 
 export function pickSquadFlights(
   flightsOut: Record<string, Flight[]>,
@@ -136,11 +136,11 @@ export function pickSquadFlights(
   const withBack = squad.filter((p) => flightsBack[p.name]?.length);
   const out = bestCombo(withOut.map((p) => flightsOut[p.name]), (f) => f.arriveTime, (f) => f.to);
   const back = bestCombo(withBack.map((p) => flightsBack[p.name]), (f) => f.departTime, (f) => f.from);
-  const pickFor = (people: Person[], combo: Combo | undefined, name: string) => combo?.flights[people.findIndex((p) => p.name === name)];
+  const pickFor = (people: Traveller[], combo: Combo | undefined, name: string) => combo?.flights[people.findIndex((p) => p.name === name)];
 
   const flights: FlightPick[] = squad.map((p) => ({
     person: p.name,
-    city: p.city,
+    city: p.city ?? "",
     out: pickFor(withOut, out.best, p.name),
     back: pickFor(withBack, back.best, p.name),
   }));
