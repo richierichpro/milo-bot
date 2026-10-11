@@ -10,7 +10,7 @@ import { gatherCandidates } from "../src/core/gather.js";
 import { noteProblem, type TripPlan } from "../src/core/planner.js";
 
 process.env.SERPAPI_OFFLINE ??= "true";
-const dir = path.join(process.env.MILO_DATA_DIR ?? ".data", "chats");
+const dir = path.join(process.env.MILO_DATA_DIR ?? ".data-sim", "chats");
 const files = (await readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json"));
 const states = await Promise.all(files.map(async (f) => JSON.parse(await readFile(path.join(dir, f), "utf8")) as ChatState));
 const s = states.filter((x) => x.data.plan).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];

@@ -11,7 +11,7 @@ import type { TripPlan } from "../src/core/planner.js";
 
 const out = process.argv[2] ?? "/tmp/milo-plan";
 await mkdir(out, { recursive: true });
-const dir = path.join(".data", "chats");
+const dir = path.join(process.env.MILO_DATA_DIR ?? ".data-sim", "chats");
 const s = (await Promise.all((await readdir(dir)).map(async (f) => JSON.parse(await readFile(path.join(dir, f), "utf8")) as ChatState))).find((x) => x.data.plan)!;
 const plan = s.data.plan as TripPlan;
 for (const [i, d] of plan.days.entries()) {

@@ -7,6 +7,8 @@ import { DEMO_CHAT } from "../src/core/demo.js";
 import { closeRenderer } from "../src/cards/render.js";
 
 process.env.MILO_TODAY ??= "2026-10-11";
+// Keep the simulator's fake chat away from the real bot's .data/.
+process.env.MILO_DATA_DIR ??= ".data-sim";
 process.env.MESSAGE_GAP_MS ??= "0";
 process.env.SERPAPI_OFFLINE ??= process.env.DEMO_MODE === "true" ? "false" : "true";
 
