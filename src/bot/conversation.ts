@@ -15,6 +15,8 @@ export type Hooks = {
   onCallback: (ctx: Context, state: ChatState) => Promise<boolean>;
   /** A reply or mention asking for a change, once a plan exists. */
   onEditRequest: (chatId: number, text: string) => Promise<void>;
+  /** Typed answers the planning flow is waiting for (fixes, "Other"). Return true when handled. */
+  onMessage: (state: ChatState, heard: Heard) => Promise<boolean>;
 };
 
 const GAP_MS = Number(process.env.MESSAGE_GAP_MS ?? 400);
@@ -27,7 +29,11 @@ export class Milo {
     },
     onCallback: async () => false,
     onEditRequest: async () => {},
+    onMessage: async () => false,
   };
+
+  /** Chats this process has seen, for the vote clock. */
+  readonly knownChats = new Set<number>();
 
   private buffers = new Map<number, { msgs: Heard[]; timer?: ReturnType<typeof setTimeout> }>();
   private queues = new Map<number, Promise<unknown>>();
@@ -106,6 +112,7 @@ export class Milo {
       const chatId = ctx.chat?.id;
       if (chatId === undefined) return ctx.answerCallbackQuery();
       const state = await loadState(chatId);
+      this.knownChats.add(chatId);
       const data = ctx.callbackQuery.data;
       if (data === "plan_trip") {
         await ctx.answerCallbackQuery();
@@ -133,6 +140,8 @@ export class Milo {
       if (state.paused) return;
       const from = ctx.from;
       const heard: Heard = { messageId: ctx.message.message_id, userId: from.id, name: from.first_name, text: ctx.message.text };
+      this.knownChats.add(state.chatId);
+      if (await this.hooks.onMessage(state, heard)) return;
       const toMilo = ctx.message.reply_to_message?.from?.id === bot.botInfo.id || new RegExp(`@${bot.botInfo.username}\\b`, "i").test(heard.text);
       if (state.stage === "done" && toMilo) return this.hooks.onEditRequest(state.chatId, heard.text);
       if (!state.listening) return;

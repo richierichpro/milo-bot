@@ -2,6 +2,7 @@ import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { Milo } from "./conversation.js";
+import { PlanningFlow } from "./flow.js";
 
 export const ALLOWED_UPDATES = ["message", "callback_query", "my_chat_member"] as const;
 export const DESCRIPTION = "I plan your squad's trip right here in the chat.";
@@ -11,14 +12,16 @@ export function createMilo(token: string, opts: { botInfo?: UserFromGetMe; quiet
   const bot = new Bot(token, opts.botInfo ? { botInfo: opts.botInfo } : undefined);
   bot.api.config.use(autoRetry());
   const milo = new Milo(bot, { quietMs: opts.quietMs });
+  const flow = new PlanningFlow(milo);
   bot.catch((err) => console.error("bot error:", err.error instanceof Error ? err.error.message : err.error));
-  return { bot, milo };
+  return { bot, milo, flow };
 }
 
 async function main() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("Set TELEGRAM_BOT_TOKEN in .env.local");
-  const { bot } = createMilo(token);
+  const { bot, flow } = createMilo(token);
+  flow.startClock();
   await bot.init();
   await bot.api.setMyDescription(DESCRIPTION).catch(() => {});
   await bot.api.setMyShortDescription(DESCRIPTION).catch(() => {});

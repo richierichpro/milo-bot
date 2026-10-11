@@ -7,7 +7,7 @@ P0
 - [x] 2 Squad engine + constraint checker
 - [x] 3 Card renderer (web app design)
 - [x] 4 Bot core: intro, listening, natural-language squad, Trip card
-- [ ] 5 Heard card, questions, vote system, destination vote
+- [x] 5 Heard card, questions, vote system, destination vote
 - [ ] 6 Solve within limits + negotiate
 - [ ] 7 Itinerary with logistics, final plan cards, boarding passes
 - [ ] 8 Demo mode, simulator, README  (STOP: run the full demo in my Telegram test group)
