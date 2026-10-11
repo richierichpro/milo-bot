@@ -20,6 +20,17 @@ export type Hooks = {
 };
 
 const GAP_MS = Number(process.env.MESSAGE_GAP_MS ?? 400);
+/** While Milo is asking step-by-step questions, reply after 5 s of quiet instead of 15. */
+const SETUP_QUIET_MS = 5_000;
+
+/** "this_weekend" / "next_weekend" → Friday–Sunday. */
+export function weekendRange(value: string, from = process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 10)): [string, string] | undefined {
+  if (value !== "this_weekend" && value !== "next_weekend") return undefined;
+  const d = new Date(`${from}T00:00:00Z`);
+  const toFri = ((5 - d.getUTCDay() + 7) % 7) + (value === "next_weekend" ? 7 : 0);
+  const fri = new Date(d.getTime() + toFri * 86_400_000);
+  return [fri.toISOString().slice(0, 10), new Date(fri.getTime() + 2 * 86_400_000).toISOString().slice(0, 10)];
+}
 const today = () => process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 10);
 
 export class Milo {
@@ -116,7 +127,7 @@ export class Milo {
       const data = ctx.callbackQuery.data;
       if (data === "plan_trip") {
         await ctx.answerCallbackQuery();
-        return this.startListening(state, ctx.from);
+        return this.startListening(state);
       }
       if (data === "plan_now") {
         await ctx.answerCallbackQuery({ text: "Planning! 🗺" });
@@ -130,6 +141,7 @@ export class Milo {
         return this.updateTripCard(state);
       }
       if (data.startsWith("undo:")) return this.undo(ctx, state, data.slice(5));
+      if (data.startsWith("setup:")) return this.onSetup(ctx, state, data.slice(6));
       if (!(await this.hooks.onCallback(ctx, state))) await ctx.answerCallbackQuery();
     });
 
@@ -145,7 +157,7 @@ export class Milo {
       const toMilo = ctx.message.reply_to_message?.from?.id === bot.botInfo.id || new RegExp(`@${bot.botInfo.username}\\b`, "i").test(heard.text);
       if (state.stage === "done" && toMilo) return this.hooks.onEditRequest(state.chatId, heard.text);
       if (!state.listening) return;
-      this.buffer(state.chatId, heard);
+      this.buffer(state.chatId, heard, state.data.setup ? SETUP_QUIET_MS : undefined);
     });
   }
 
@@ -156,33 +168,103 @@ export class Milo {
     await saveState(state);
     await this.say(
       chatId,
-      "👋 Hi, I'm <b>Milo</b>. I plan your squad's trip right here in the chat.\n\nTap the button and just talk like you normally do: who's in, where from, dates, budgets, food needs. I'll keep track, check everyone's limits, and come back with a plan that works for all of you.",
+      "Hey! I'm <b>Milo</b> 👋\nI'll plan your trip right here in the chat.",
       new InlineKeyboard().text("Plan a trip ✈️", "plan_trip"),
     );
     if (!this.bot.botInfo.can_read_all_group_messages) {
       await this.say(
         chatId,
-        "One thing first: I can't see your messages yet. 🙈\n\nEither make me an <b>admin</b> of this group, or open @BotFather → <code>/setprivacy</code> → pick me → <b>Disable</b>, then remove and re-add me.",
+        "Quick thing: I can't see your messages yet 🙈\nMake me an <b>admin</b>, or in @BotFather: <code>/setprivacy</code> → <b>Disable</b>, then re-add me.",
       );
     }
   }
 
-  private async startListening(state: ChatState, by?: { id: number; first_name: string }) {
+  private async startListening(state: ChatState) {
     state.listening = true;
     state.stage = "listening";
+    state.data.setup = "who";
     await saveState(state);
-    const tag = by ? `<a href="tg://user?id=${by.id}">${esc(by.first_name)}</a>, ` : "";
+    await this.updateTripCard(state);
+    await this.typing(state.chatId);
+    await this.say(state.chatId, "Let's go! 🙌\n<b>Who's in?</b> Tell me where you're flying from.", new InlineKeyboard().text("That's everyone ✅", "setup:next"));
+  }
+
+  // ---------- Step by step: who → where → when → anything else ----------
+
+  private typing(chatId: number) {
+    return this.bot.api.sendChatAction(chatId, "typing").catch(() => {});
+  }
+
+  private async askWhere(state: ChatState) {
+    state.data.setup = "where";
+    await saveState(state);
+    await this.typing(state.chatId);
+    const named = state.mentioned[0];
+    if (named)
+      return void (await this.say(state.chatId, `📍 <b>${esc(named)}</b>, yeah?`, new InlineKeyboard().text(`Yes, ${named} ✅`, "setup:dest").text("Show me options 💡", "setup:suggest")));
+    await this.say(state.chatId, "📍 <b>Where do you wanna go?</b>", new InlineKeyboard().text("Suggest places 💡", "setup:suggest"));
+  }
+
+  private async askWhen(state: ChatState) {
+    if (state.trip.startDate && state.trip.endDate) return this.askExtras(state);
+    state.data.setup = "when";
+    await saveState(state);
+    await this.typing(state.chatId);
     await this.say(
       state.chatId,
-      `👂 ${tag}let's do it! A few things to sort out, just reply in the chat:\n\n👥 <b>Who's in, and where's everyone flying from?</b>\n📍 <b>Any place in mind</b>, or should I suggest some?\n📅 <b>Which dates</b> work?\n💸 <b>Budgets and food needs</b>, if any.\n\nYou can add friends who aren't here too (“Kabir's in, from Delhi”). I'll react 👀 when I note something, and ask whoever I'm missing later. Say <b>“Milo, plan it”</b> when you're ready.`,
+      "📅 <b>When?</b>",
+      new InlineKeyboard().text("This weekend", "setup:when:this_weekend").text("Next weekend", "setup:when:next_weekend").row().text("Pick dates ✍️", "setup:when:other"),
     );
+  }
+
+  private async askExtras(state: ChatState) {
+    state.data.setup = "extras";
+    state.planItNowSent = true;
+    await saveState(state);
     await this.updateTripCard(state);
+    await this.typing(state.chatId);
+    await this.say(state.chatId, "Anything else? 💸 budgets, 🍽 food, 📌 must-dos…\nOr I'll start 👇", new InlineKeyboard().text("Plan it now 🗺", "plan_now"));
+  }
+
+  private async onSetup(ctx: Context, state: ChatState, action: string) {
+    const step = state.data.setup;
+    if (action === "next") {
+      if (step !== "who") return ctx.answerCallbackQuery();
+      if (!state.squad.length) return ctx.answerCallbackQuery({ text: "Say “I'm in” first 🙂", show_alert: true });
+      await ctx.answerCallbackQuery();
+      await this.flush(state.chatId);
+      return this.askWhere(state);
+    }
+    if (action === "dest" || action === "suggest") {
+      if (step !== "where") return ctx.answerCallbackQuery();
+      await ctx.answerCallbackQuery();
+      if (action === "dest" && state.mentioned[0]) {
+        state.trip.destination = state.mentioned[0];
+        state.decisions.push(`Going to ${state.trip.destination}`);
+      } else await this.say(state.chatId, "Cool, I'll suggest a few once I've got everyone's limits 💡");
+      await saveState(state);
+      await this.updateTripCard(state);
+      return this.askWhen(state);
+    }
+    if (action.startsWith("when:")) {
+      if (step !== "when") return ctx.answerCallbackQuery();
+      await ctx.answerCallbackQuery();
+      const which = action.slice(5);
+      if (which === "other") return void (await this.say(state.chatId, "Type them, like “20–23 Nov” 👇"));
+      const range = weekendRange(which);
+      if (range) [state.trip.startDate, state.trip.endDate] = range;
+      await saveState(state);
+      await this.updateTripCard(state);
+      return this.askExtras(state);
+    }
+    return ctx.answerCallbackQuery();
   }
 
   private async planNow(state: ChatState) {
     if (state.stage !== "listening" && state.stage !== "intro") return;
     await this.flush(state.chatId);
     state.listening = false;
+    state.data.setup = undefined;
     await saveState(state);
     await this.hooks.onPlanNow(state.chatId);
   }
@@ -206,13 +288,13 @@ export class Milo {
 
   // ---------- Listening ----------
 
-  private buffer(chatId: number, m: Heard) {
+  private buffer(chatId: number, m: Heard, quietMs?: number) {
     const b = this.buffers.get(chatId) ?? { msgs: [] };
     b.msgs.push(m);
     clearTimeout(b.timer);
     this.buffers.set(chatId, b);
     if (b.msgs.length >= (this.opts.maxBatch ?? BATCH_MAX)) void this.flush(chatId);
-    else b.timer = setTimeout(() => void this.flush(chatId), this.opts.quietMs ?? BATCH_QUIET_MS);
+    else b.timer = setTimeout(() => void this.flush(chatId), Math.min(quietMs ?? Infinity, this.opts.quietMs ?? BATCH_QUIET_MS));
   }
 
   /** Read everything buffered for a chat in one fast-model call. */
@@ -222,6 +304,9 @@ export class Milo {
     clearTimeout(b.timer);
     const msgs = b.msgs.splice(0);
     const state = await loadState(chatId);
+    const before = new Map(state.squad.map((p) => [p.id, p.city]));
+    const datesBefore = state.trip.startDate;
+    const placesBefore = state.mentioned.length;
     let applied;
     try {
       applied = apply(state, await understand(msgs, state, today()), msgs);
@@ -234,10 +319,16 @@ export class Milo {
     for (const id of applied.sourceIds) {
       await this.send(chatId, () => this.bot.api.setMessageReaction(chatId, id, [{ type: "emoji", emoji: "👀" }])).catch(() => {});
     }
-    for (const { member, by } of applied.addedByOthers) {
+    // Short, human acks: who joined, and anyone added by a friend gets an Undo.
+    const proxied = new Set(applied.addedByOthers.map((x) => x.member.id));
+    const fresh = state.squad.filter((p) => !before.has(p.id) && !proxied.has(p.id));
+    const cityNow = state.squad.filter((p) => before.has(p.id) && !before.get(p.id) && p.city);
+    const ack = [...fresh, ...cityNow].map((p) => `<b>${esc(p.name)}</b>${p.city ? ` (${esc(p.city)})` : ""}`);
+    if (ack.length) await this.say(chatId, `👍 ${ack.join(", ")}`);
+    for (const { member } of applied.addedByOthers) {
       const token = randomBytes(4).toString("hex");
       state.undo[token] = { memberId: member.id, addedBy: member.proxyFor ?? "" };
-      await this.say(chatId, `➕ Added <b>${esc(member.name)}</b>${member.city ? ` (${esc(member.city)})` : ""} to the squad, via ${esc(by)}.`, new InlineKeyboard().text("Undo", `undo:${token}`));
+      await this.say(chatId, `➕ <b>${esc(member.name)}</b>${member.city ? ` (${esc(member.city)})` : ""} added`, new InlineKeyboard().text("Undo", `undo:${token}`));
     }
     await saveState(state);
     await this.updateTripCard(state);
@@ -248,6 +339,20 @@ export class Milo {
       await saveState(state);
       return this.say(chatId, "⏸ Paused. Tap <b>Resume Milo</b> on the Trip card when you want me back.");
     }
+    // Step by step: move on when the chat answered the current question.
+    const setup = state.data.setup;
+    if (setup === "where" && state.mentioned.length > placesBefore) {
+      state.trip.destination = state.mentioned.at(-1);
+      state.decisions.push(`Going to ${state.trip.destination}`);
+      await saveState(state);
+      await this.say(chatId, `📍 <b>${esc(state.trip.destination!)}</b>, nice!`);
+      return this.askWhen(state);
+    }
+    if (setup === "when" && state.trip.startDate && state.trip.startDate !== datesBefore) {
+      await this.say(chatId, `📅 Got it 👍`);
+      return this.askExtras(state);
+    }
+    if (setup) return;
     if (enoughToPlan(state) && !state.planItNowSent) {
       state.planItNowSent = true;
       await saveState(state);

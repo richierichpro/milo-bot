@@ -86,7 +86,7 @@ export class PlanningFlow {
       kb.text(`✏️ Fix ${p.name}'s`, `fix:${p.id}`);
       if (i % 2) kb.row();
     });
-    await this.sendCard(s.chatId, heardHtml(s.squad), "📝 <b>Here's what I heard.</b> 🔒 = hard limits I'll never break without your OK.\nTap <b>Fix</b> on your own row if I got something wrong.", kb);
+    await this.sendCard(s.chatId, heardHtml(s.squad), "📝 <b>Here's what I heard</b>\nAll good? 🔒 = I'll never break it", kb);
   }
 
   // ---------- Callbacks ----------
@@ -114,7 +114,7 @@ export class PlanningFlow {
       f.fixing = p.id;
       await saveState(s);
       await ctx.answerCallbackQuery();
-      await this.milo.say(s.chatId, `✏️ ${mention(p)}, tell me what to change in your own words, e.g. “budget 18k” or “I'm vegan”.`);
+      await this.milo.say(s.chatId, `✏️ ${mention(p)}, what should I change?`);
       return true;
     }
 
@@ -213,7 +213,14 @@ export class PlanningFlow {
     const f = flow(s);
     f.question = q;
     await saveState(s);
-    if (!q) return this.destinationVote(s);
+    if (!q) {
+      if (s.trip.destination) {
+        s.stage = "solving";
+        await saveState(s);
+        return this.next(s.chatId);
+      }
+      return this.destinationVote(s);
+    }
     const p = s.squad.find((x) => x.id === q.memberId)!;
     if (q.kind === "city") {
       const kb = new InlineKeyboard();
@@ -309,7 +316,7 @@ export class PlanningFlow {
     const msg = await this.sendCard(
       s.chatId,
       shortlistHtml(shortlist),
-      `🗳 <b>Where are we going?</b> One vote each; tap again to vote for a friend you added.\n${needs.length ? `<i>${t.esc(needs.join(" · "))} (their own vote counts as OK).</i>\n` : ""}Voting closes in ${Math.round((v.deadline - v.createdAt) / 3_600_000)} h, or as soon as it's clear.`,
+      `🗳 <b>Where are we going?</b> One vote each.${needs.length ? `\n<i>${t.esc(needs.join(" · "))}</i>` : ""}`,
       this.voteKeyboard(s, v),
     );
     v.messageId = msg.message_id;

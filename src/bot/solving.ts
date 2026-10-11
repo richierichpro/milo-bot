@@ -130,7 +130,7 @@ export class SolvingFlow {
       options.forEach((_, i) => kb.text(String.fromCharCode(65 + i), `neg:${member.id}:${i}`));
       return void (await this.milo.say(
         s.chatId,
-        `💸 ${mention(member)}, ${esc(s.trip.destination ?? "")} comes to <b>${formatINR(now)}</b> for you, <b>${formatINR(now - check.constraint.max)} over</b> your ${formatINR(check.constraint.max)} cap.\n\n${lines.join("\n")}\n\nYour call; I won't break your limit without your OK.`,
+        `💸 ${mention(member)}, ${esc(s.trip.destination ?? "")} comes to <b>${formatINR(now)}</b> for you, <b>${formatINR(now - check.constraint.max)} over</b> your cap.\n\n${lines.join("\n")}\n\nYour call 🙂`,
         kb,
       ));
     }
@@ -196,7 +196,7 @@ export class SolvingFlow {
     const changes = option.affects.map((n) => `${n} ${diff(n) <= 0 ? `saves ${formatINR(-diff(n))}` : `pays ${formatINR(diff(n))} more`}`).join(", ");
     await this.milo.say(
       s.chatId,
-      `🗳 <b>${esc(member.name)}</b> picked: ${esc(option.label)}.\nIt changes the stay for everyone: ${esc(changes)}.\n\n👍 to go with it. It goes through unless most of you say 👎 in the next ${Math.round((q.deadline - Date.now()) / 60_000)} min.`,
+      `🏨 ${esc(member.name)} picked a cheaper stay. ${esc(changes)}.\nOK? 👍`,
       new InlineKeyboard().text("👍", `qv:${q.id}:up`).text("👎", `qv:${q.id}:down`),
     );
     await this.settleQuick(s);
