@@ -8,7 +8,7 @@ P0
 - [x] 3 Card renderer (web app design)
 - [x] 4 Bot core: intro, listening, natural-language squad, Trip card
 - [x] 5 Heard card, questions, vote system, destination vote
-- [ ] 6 Solve within limits + negotiate
+- [x] 6 Solve within limits + negotiate
 - [ ] 7 Itinerary with logistics, final plan cards, boarding passes
 - [ ] 8 Demo mode, simulator, README  (STOP: run the full demo in my Telegram test group)
 P1 (ask me before each)

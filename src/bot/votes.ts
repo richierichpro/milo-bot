@@ -209,11 +209,11 @@ export const newQuickVote = (id: string, squad: SquadMember[], now: number): Qui
   status: "open",
 });
 
-/** Goes through unless a majority votes 👎 before the deadline. */
+/** Goes through unless a majority votes 👎 before the deadline (a 👍 majority settles it early). */
 export function quickTick(q: QuickVote, now: number): QuickVote["status"] {
   if (q.status !== "open") return q.status;
   if (q.down.length * 2 > q.eligible.length) q.status = "rejected";
-  else if (now >= q.deadline) q.status = "passed";
+  else if (q.up.length * 2 > q.eligible.length || now >= q.deadline) q.status = "passed";
   return q.status;
 }
 

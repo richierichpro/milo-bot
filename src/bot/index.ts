@@ -3,6 +3,7 @@ import { Bot } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { Milo } from "./conversation.js";
 import { PlanningFlow } from "./flow.js";
+import { SolvingFlow } from "./solving.js";
 
 export const ALLOWED_UPDATES = ["message", "callback_query", "my_chat_member"] as const;
 export const DESCRIPTION = "I plan your squad's trip right here in the chat.";
@@ -13,8 +14,9 @@ export function createMilo(token: string, opts: { botInfo?: UserFromGetMe; quiet
   bot.api.config.use(autoRetry());
   const milo = new Milo(bot, { quietMs: opts.quietMs });
   const flow = new PlanningFlow(milo);
+  const solving = new SolvingFlow(milo, flow);
   bot.catch((err) => console.error("bot error:", err.error instanceof Error ? err.error.message : err.error));
-  return { bot, milo, flow };
+  return { bot, milo, flow, solving };
 }
 
 async function main() {

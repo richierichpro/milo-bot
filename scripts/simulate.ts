@@ -87,6 +87,22 @@ for (const who of ["Aarav", "Meera", "Kabir", "Ishita"]) {
   await tapButton(who, (b) => b.data.startsWith("v:") && / · Goa · /.test(b.text));
 }
 
+console.log("\n— Solving within everyone's limits —");
+for (let i = 0; i < 4; i++) {
+  const st = await loadState(tg.chatId);
+  const sv = st.data.solve as { asking?: { memberId: string }; quick?: { status: string } } | undefined;
+  if (sv?.asking) {
+    const who = st.squad.find((p) => p.id === sv.asking!.memberId)!.name;
+    await tapButton(who, (b) => b.data === `neg:${sv.asking!.memberId}:0`, "(the option that fits her cap)");
+    continue;
+  }
+  if (sv?.quick?.status === "open") {
+    for (const who of ["Aarav", "Meera"]) await tapButton(who, (b) => b.data.startsWith("qv:") && b.data.endsWith(":up"));
+    continue;
+  }
+  break;
+}
+
 const state = await loadState(tg.chatId);
 console.log("\n— What Milo stored (constraints only, no message text) —");
 for (const p of state.squad) console.log(`${p.name}${p.city ? ` (${p.city})` : ""}: ${p.constraints.map((c) => `${c.hard ? "🔒" : ""}${c.kind}${"max" in c ? ` ${c.max}` : ""}${"diet" in c ? ` ${c.diet}` : ""}${"notBefore" in c && c.notBefore ? ` ≥${c.notBefore}${c.date ? ` on ${c.date}` : ""}` : ""}${"what" in c ? ` "${c.what}"` : ""}`).join(", ")}`);

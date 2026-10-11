@@ -103,7 +103,8 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
 
   const cap = hotelPriceCap(squad, trip);
   const diets = [...new Set(squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "food" && c.hard ? [c.diet] : []))))];
-  const mustDos = squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "must_do" ? [c.what] : [])));
+  // Only must-dos that name a place ("Chapora fort") get their own search; "a proper beach day" doesn't.
+  const mustDos = squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "must_do" && /[A-Z]/.test(c.what) ? [c.what] : [])));
   const mapsQueries = [
     `top attractions in ${dest}`,
     `best restaurants in ${dest}`,
