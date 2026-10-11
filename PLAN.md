@@ -6,7 +6,7 @@ P0
 - [x] 1 Search layer + reality checks
 - [x] 2 Squad engine + constraint checker
 - [x] 3 Card renderer (web app design)
-- [ ] 4 Bot core: intro, listening, natural-language squad, Trip card
+- [x] 4 Bot core: intro, listening, natural-language squad, Trip card
 - [ ] 5 Heard card, questions, vote system, destination vote
 - [ ] 6 Solve within limits + negotiate
 - [ ] 7 Itinerary with logistics, final plan cards, boarding passes
