@@ -97,3 +97,19 @@ export function suggestCities(city: string, max = 3): string[] {
     .slice(0, max)
     .map((x) => x.name);
 }
+
+/** Approximate airport locations, for drawing each friend's line on the map. */
+const AIRPORT_COORDS: Record<string, [number, number]> = {
+  DEL: [28.556, 77.1], BOM: [19.089, 72.868], BLR: [13.199, 77.706], HYD: [17.24, 78.429], MAA: [12.99, 80.169],
+  CCU: [22.654, 88.447], PNQ: [18.582, 73.92], AMD: [23.077, 72.635], JAI: [26.824, 75.812], LKO: [26.761, 80.889],
+  IXC: [30.673, 76.788], IDR: [22.722, 75.801], BHO: [23.287, 77.337], NAG: [21.092, 79.047], PAT: [25.591, 85.088],
+  BBI: [20.244, 85.818], GAU: [26.106, 91.586], CJB: [11.03, 77.043], COK: [10.152, 76.402], TRV: [8.482, 76.92],
+  VTZ: [17.721, 83.225], BDQ: [22.336, 73.226], STV: [21.114, 72.742], IXE: [12.961, 74.89], GOI: [15.38, 73.831],
+  GOX: [15.731, 73.861], UDR: [24.618, 73.896], JDH: [26.251, 73.049], JSA: [26.889, 70.865], ATQ: [31.709, 74.797],
+  VNS: [25.452, 82.859], SXR: [33.987, 74.774], IXL: [34.136, 77.546], IXZ: [11.641, 92.73], IXM: [9.835, 78.093],
+  MYQ: [12.23, 76.656], DED: [30.19, 78.18], IXB: [26.681, 88.329], KUU: [31.877, 77.154], VDY: [15.175, 76.634],
+};
+
+export function airportCoords(codes: string): [number, number] | undefined {
+  return AIRPORT_COORDS[primaryCode(codes)];
+}
