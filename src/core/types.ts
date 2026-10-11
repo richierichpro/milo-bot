@@ -124,9 +124,18 @@ export type TripInput = {
 
 export type FlightPick = { person: string; city: string; out?: Flight; back?: Flight };
 
-export type Stop =
-  | { kind: "place"; time: string; why: string; item: Place }
-  | { kind: "event"; time: string; why: string; item: Event };
+/** `why` is Milo's note: only facts from the candidate's own data, checked in code. */
+export type Stop = ({ kind: "place"; item: Place } | { kind: "event"; item: Event }) & {
+  time: string;
+  why: string;
+  /** Travel from the previous stop (or the hotel): "18 min drive (Google Maps)" or "≈ 2 km, short ride". */
+  hop?: string;
+  hopMinutes?: number;
+  /** "hours not listed" when Google has no hours for that day. */
+  hoursNote?: string;
+};
+
+export type Logistics = { time: string; label: string; at: "start" | "end" };
 
 export type Day = {
   date: string;
@@ -134,6 +143,12 @@ export type Day = {
   stops: Stop[];
   /** Straight-line km between the day's places × 1.3; approximate. */
   approxKm?: number;
+  /** Arrivals, check-in, leave-for-airport rows. */
+  logistics?: Logistics[];
+  leaveBy?: string;
+  travelMinutes?: number;
+  /** Local sunset "HH:MM" (suncalc). */
+  sunset?: string;
 };
 
 export type Verification = { total: number; verified: number; removed: string[] };

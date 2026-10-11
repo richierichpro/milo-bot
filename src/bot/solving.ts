@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { InlineKeyboard, type Context } from "grammy";
 import { esc } from "../cards/templates.js";
 import { gatherCandidates, type CandidatePool, type Trip } from "../core/gather.js";
+import { planTrip, type TripPlan } from "../core/planner.js";
+import { postPlan, sourcesMessages } from "./postplan.js";
 import { formatINR } from "../core/money.js";
 import { budgetCompromises, problems, solve, type Compromise, type Solution } from "../core/solve.js";
 import type { SquadMember } from "../core/types.js";
@@ -30,10 +32,27 @@ export const bar = (done: number, total: number, width = 10) => {
 export class SolvingFlow {
   /** Pools stay in memory; after a restart they're rebuilt from the search cache for free. */
   readonly pools = new Map<number, CandidatePool>();
-  /** Called once every hard limit passes or is waived (Step 7 plugs in the itinerary). */
-  next: (chatId: number, sol: Solution, pool: CandidatePool) => Promise<void> = async (chatId) => {
-    await this.milo.say(chatId, "Everyone's limits check out. Building the days next. 🗺");
-  };
+  /** Called once every hard limit passes or is waived: build and post the itinerary. */
+  next: (chatId: number, sol: Solution, pool: CandidatePool) => Promise<void> = (chatId, sol, pool) => this.itinerary(chatId, sol, pool);
+
+  private async itinerary(chatId: number, sol: Solution, pool: CandidatePool) {
+    const s = await loadState(chatId);
+    await this.milo.bot.api.sendChatAction(chatId, "typing").catch(() => {});
+    const status = await this.milo.say(chatId, `🗺 Everyone's limits check out. Building the days…\n${bar(1, 4)}`);
+    let step = 1;
+    const plan = await planTrip(pool, tripOf(s), sol, s.squad, {
+      onProgress: (text) => void this.milo.bot.api.editMessageText(chatId, status.message_id, `🗺 ${esc(text.replace(/…$/, ""))}…\n${bar(++step, 5)}`).catch(() => {}),
+    });
+    const live = plan.receipts.filter((r) => r.source === "live").length;
+    await this.milo.send(chatId, () => this.milo.bot.api.editMessageText(chatId, status.message_id, `✓ ${plan.receipts.length} searches · ${live} live · ${plan.verification.verified}/${plan.verification.total} verified`)).catch(() => {});
+    s.data.plan = plan;
+    s.stage = "done";
+    s.decisions.push(`Plan ready: ${plan.title}`);
+    s.pending = [];
+    await saveState(s);
+    await postPlan(this.milo, s, plan);
+    await this.milo.updateTripCard(s);
+  }
 
   constructor(private milo: Milo, flow: PlanningFlow) {
     flow.next = (chatId) => this.start(chatId);
@@ -140,6 +159,13 @@ export class SolvingFlow {
         return true;
       }
       await this.applyOption(s, member, option);
+      return true;
+    }
+    if (data === "sources") {
+      const plan = s.data.plan as TripPlan | undefined;
+      await ctx.answerCallbackQuery();
+      if (!plan) return true;
+      for (const m of sourcesMessages(plan)) await this.milo.say(s.chatId, m);
       return true;
     }
     if (data.startsWith("qv:")) {

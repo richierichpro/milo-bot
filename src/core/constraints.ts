@@ -1,5 +1,5 @@
 import { formatINR } from "./money.js";
-import type { Constraint, CostLine, Day, FlightPick, Hotel, Place, SquadMember } from "./types.js";
+import type { Constraint, CostLine, Day, FlightPick, Hotel, Place, SquadMember, Stop } from "./types.js";
 
 // Every hard limit is checked here, in code, for every person. Evidence always
 // comes from real data (a flight time, a price, a restaurant's category).
@@ -74,17 +74,29 @@ function checkOne(c: Constraint, person: SquadMember, plan: PlanForCheck): Const
     case "food": {
       if (!plan.days?.length) return result(false, "Checked once the days are planned", true);
       const label = c.diet === "veg" ? "veg" : c.diet;
-      const perDay = plan.days.map((d) => d.stops.find((s) => s.kind === "place" && MEAL_CATEGORY.test(s.item.category ?? "") && suitsDiet(s.item, c.diet)));
-      const missing = perDay.findIndex((s) => !s);
+      // Every full day needs a suitable meal; a travel day only if it has meals at all.
+      const meal = (s: Stop) => s.kind === "place" && MEAL_CATEGORY.test(s.item.category ?? "");
+      const last = plan.days.length - 1;
+      const perDay = plan.days.map((d, i) => {
+        const full = i > 0 && i < last;
+        const ok = d.stops.find((s) => meal(s) && s.kind === "place" && suitsDiet(s.item, c.diet));
+        return { needs: full || d.stops.some(meal), ok };
+      });
+      const missing = perDay.findIndex((x) => x.needs && !x.ok);
       if (missing >= 0) return result(false, `Day ${missing + 1} has no meal stop listed as ${label} on Google`);
-      const first = perDay[0]!;
+      const first = perDay.find((x) => x.ok)?.ok;
+      if (!first) return result(true, "No meals on your travel days");
       return result(true, `A ${label} meal every day, e.g. ${first.kind === "place" ? first.item.name : ""} (${first.kind === "place" ? first.item.category : ""})`);
     }
     case "must_do": {
+      if (!plan.days) return result(false, "Checked once the days are planned", true);
+      // A named place must appear by name; a wish like "a proper beach day" matches a stop's name or category.
       const want = c.what.toLowerCase();
-      const at = plan.days?.findIndex((d) => d.stops.some((s) => (s.kind === "place" ? s.item.name : s.item.title).toLowerCase().includes(want)));
-      if (at === undefined) return result(false, "Checked once the days are planned", true);
-      return result(at >= 0, at >= 0 ? `${c.what} is on day ${at + 1}` : `${c.what} isn't in the plan`);
+      const words = want.split(/\W+/).filter((w) => w.length > 3 && !["proper", "least", "some", "want", "with", "good", "nice", "really"].includes(w));
+      const text = (s: Stop) => (s.kind === "place" ? `${s.item.name} ${s.item.category ?? ""}` : s.item.title).toLowerCase();
+      const at = plan.days.findIndex((d) => d.stops.some((s) => (/[A-Z]/.test(c.what) ? text(s).includes(want) : words.some((w) => text(s).includes(w)))));
+      const stop = at >= 0 ? plan.days[at].stops.find((s) => (/[A-Z]/.test(c.what) ? text(s).includes(want) : words.some((w) => text(s).includes(w)))) : undefined;
+      return result(at >= 0, at >= 0 ? `${c.what}: ${stop!.kind === "place" ? stop!.item.name : stop!.item.title} on day ${at + 1}` : `${c.what} isn't in the plan`);
     }
     default:
       // Vibe and no-go preferences guide the plan but can't be proven from data.
