@@ -89,6 +89,7 @@ Every friend group has a trip chat where the plan never happens, because everyon
 ## Tech
 Node 20+, TypeScript (strict, ESM), tsx, grammY with long polling + @grammyjs/auto-retry, @anthropic-ai/sdk (structured output through forced tool calls), Playwright (card rendering), suncalc, vitest. Make sure message, callback_query and my_chat_member updates are received.
 - CLAUDE_MODEL (planning) and CLAUDE_MODEL_FAST (reading chat messages).
+- Keep token costs low (user decision, 2026-10-11): both models default to claude-haiku-5-5. Every Claude response is cached on disk by request hash (repeat runs are free); prompts use compact candidate lines with short ids, never raw JSON; stable system prompts and tools use prompt caching; extraction runs at low effort with small max_tokens; listening stays batched (15 s quiet or 10 messages).
 - Listening is batched: buffer group messages and run one fast-model extraction call after 15 s of quiet or 10 messages, whichever comes first.
 - All SerpApi calls go through src/core/serpapi.ts (disk cache, demo mode, call log). All Claude calls go through src/core/claude.ts.
 - Chat state as JSON in .data/chats/<chatId>.json. HTML parse mode, all text escaped. Text ≤ 4,096 chars, captions ≤ 1,024. About 400 ms between consecutive messages.
