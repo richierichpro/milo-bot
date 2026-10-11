@@ -96,7 +96,8 @@ export async function serpSearch(params: SerpParams, opts?: { log?: CallLogEntry
   const cacheFile = cachePath(params);
   // A fresh server (e.g. a deploy) has no .cache yet; the committed demo
   // recordings are real responses too, so use them before paying for a search.
-  const cached = (await readJson(cacheFile)) ?? (await readJson(cachePath(params, true)));
+  // MILO_FRESH=true (e.g. recording a demo): every search goes to SerpApi; results are still saved.
+  const cached = process.env.MILO_FRESH === "true" ? null : await readJson(cacheFile);
   if (cached) {
     checkError(engine, cached);
     await recordForDemo(params, cached);

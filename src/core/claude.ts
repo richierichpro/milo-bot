@@ -67,7 +67,8 @@ async function create(params: CreateParams): Promise<Anthropic.Message> {
   }
   const file = path.join(CACHE_DIR, `${hash(params)}.json`);
   // As with searches, a recorded answer to the same request is reused before calling the API.
-  let res = (await readJson<Anthropic.Message>(file)) ?? (await readJson<Anthropic.Message>(demoFile));
+  // MILO_FRESH=true: always ask Claude; the answer is still saved.
+  let res = process.env.MILO_FRESH === "true" ? null : await readJson<Anthropic.Message>(file);
   if (!res) {
     // Tests run with CLAUDE_OFFLINE=true: a cache miss fails instead of spending tokens.
     if (process.env.CLAUDE_OFFLINE === "true") throw new Error("Offline and not cached: Claude request");

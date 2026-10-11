@@ -78,7 +78,7 @@ DEMO_MODE=true npm run simulate
 4. `npm run bot`
 5. Add the bot to a group and tap **Plan a trip ✈️**. Then just chat: who's in, from where, dates, budgets, food needs. Say "Milo, plan it" when you're ready.
 
-Both models default to Claude Haiku 5.5 (`CLAUDE_MODEL`, `CLAUDE_MODEL_FAST`) to keep token costs low; every Claude answer is cached on disk.
+Searches and Claude answers are cached on disk, so re-running a trip is free. Set `MILO_FRESH=true` to skip the cache and search everything live (e.g. when recording a demo). Both models default to Claude Haiku 5.5 (`CLAUDE_MODEL`, `CLAUDE_MODEL_FAST`) to keep token costs low; every Claude answer is cached on disk.
 
 ### Checks
 
