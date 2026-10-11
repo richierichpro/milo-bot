@@ -116,7 +116,7 @@ export class Milo {
       const data = ctx.callbackQuery.data;
       if (data === "plan_trip") {
         await ctx.answerCallbackQuery();
-        return this.startListening(state);
+        return this.startListening(state, ctx.from);
       }
       if (data === "plan_now") {
         await ctx.answerCallbackQuery({ text: "Planning! 🗺" });
@@ -167,13 +167,14 @@ export class Milo {
     }
   }
 
-  private async startListening(state: ChatState) {
+  private async startListening(state: ChatState, by?: { id: number; first_name: string }) {
     state.listening = true;
     state.stage = "listening";
     await saveState(state);
+    const tag = by ? `<a href="tg://user?id=${by.id}">${esc(by.first_name)}</a>, ` : "";
     await this.say(
       state.chatId,
-      "👂 <b>I'm listening.</b> Chat as usual: who's coming and from where, your dates, budgets, food needs, must-dos.\n\nI'll stay quiet and react 👀 when I note something. Say <b>“Milo, plan it”</b> when you're ready.",
+      `👂 ${tag}let's do it! A few things to sort out, just reply in the chat:\n\n👥 <b>Who's in, and where's everyone flying from?</b>\n📍 <b>Any place in mind</b>, or should I suggest some?\n📅 <b>Which dates</b> work?\n💸 <b>Budgets and food needs</b>, if any.\n\nYou can add friends who aren't here too (“Kabir's in, from Delhi”). I'll react 👀 when I note something, and ask whoever I'm missing later. Say <b>“Milo, plan it”</b> when you're ready.`,
     );
     await this.updateTripCard(state);
   }

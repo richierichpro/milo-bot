@@ -8,7 +8,7 @@ import { formatINR } from "../core/money.js";
 import { budgetCompromises, problems, solve, type Compromise, type Solution } from "../core/solve.js";
 import type { SquadMember } from "../core/types.js";
 import type { Milo } from "./conversation.js";
-import { actsFor, type PlanningFlow } from "./flow.js";
+import { actsFor, mention, type PlanningFlow } from "./flow.js";
 import { loadState, saveState, type ChatState } from "./state.js";
 import { newQuickVote, quickTick, type QuickVote } from "./votes.js";
 
@@ -130,7 +130,7 @@ export class SolvingFlow {
       options.forEach((_, i) => kb.text(String.fromCharCode(65 + i), `neg:${member.id}:${i}`));
       return void (await this.milo.say(
         s.chatId,
-        `💸 <b>${esc(member.name)}</b>, ${esc(s.trip.destination ?? "")} comes to <b>${formatINR(now)}</b> for you, <b>${formatINR(now - check.constraint.max)} over</b> your ${formatINR(check.constraint.max)} cap.\n\n${lines.join("\n")}\n\nYour call; I won't break your limit without your OK.`,
+        `💸 ${mention(member)}, ${esc(s.trip.destination ?? "")} comes to <b>${formatINR(now)}</b> for you, <b>${formatINR(now - check.constraint.max)} over</b> your ${formatINR(check.constraint.max)} cap.\n\n${lines.join("\n")}\n\nYour call; I won't break your limit without your OK.`,
         kb,
       ));
     }
@@ -139,7 +139,7 @@ export class SolvingFlow {
     const options: Compromise[] = [{ key: "go_over", label: `Let this one go: ${check.evidence}`, affects: [], apply: { waive: "let this limit go" } }];
     sd(s).asking = { memberId: member.id, options };
     await saveState(s);
-    await this.milo.say(s.chatId, `⚠️ <b>${esc(member.name)}</b>, I can't meet one of your limits with what's available: ${esc(check.evidence)}.`, new InlineKeyboard().text("OK, let it go", `neg:${member.id}:0`));
+    await this.milo.say(s.chatId, `⚠️ ${mention(member)}, I can't meet one of your limits with what's available: ${esc(check.evidence)}.`, new InlineKeyboard().text("OK, let it go", `neg:${member.id}:0`));
   }
 
   private async onCallback(ctx: Context, s: ChatState): Promise<boolean> {

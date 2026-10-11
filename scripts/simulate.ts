@@ -72,12 +72,14 @@ console.log("\n— Aarav confirms —");
 await tapButton("Aarav", (b) => b.data === "heard_ok");
 
 const homes: Record<string, string> = { Aarav: "Hyderabad", Meera: "Bengaluru", Kabir: "Delhi", Ishita: "Pune" };
-for (let i = 0; i < 6; i++) {
+for (let i = 0; i < 16; i++) {
   const st = await loadState(tg.chatId);
-  const q = (st.data as { question?: { memberId: string } }).question;
+  const q = (st.data as { question?: { memberId: string; kind: string } }).question;
   if (!q) break;
   const who = st.squad.find((p) => p.id === q.memberId)!.name;
-  await tapButton(who, (b) => b.data === `q:${q.memberId}:${homes[who]}`);
+  // Cities from the demo squad; nobody else has a budget cap or food needs.
+  const answer = q.kind === "city" ? homes[who] : "none";
+  await tapButton(who, (b) => b.data === `q:${q.memberId}:${answer}`);
 }
 
 console.log("\n— The vote —");

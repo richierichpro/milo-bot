@@ -17,11 +17,19 @@ import { buttonLabel, cast, newVote, tick, veto, voterNames, type Vote, type Vot
 const CITY_BUTTONS = ["Hyderabad", "Bengaluru", "Delhi", "Mumbai", "Pune", "Chennai", "Kolkata"];
 const today = () => process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 10);
 
-type Question = { kind: "city"; memberId: string } | { kind: "dates"; memberId: string };
-type FlowData = { fixing?: string; question?: Question; awaitingText?: Question; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
+type Question = { kind: "city" | "dates" | "budget" | "food"; memberId: string };
+type FlowData = { fixing?: string; question?: Question; awaitingText?: Question; asked?: string[]; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
 
 const flow = (s: ChatState) => s.data as FlowData;
-const mention = (p: SquadMember) => `<b>${t.esc(p.name)}</b>`;
+
+/**
+ * A real Telegram tag, so the person gets notified. Friends without Telegram are
+ * tagged through whoever added them (they answer for them).
+ */
+export const mention = (p: SquadMember) => {
+  const id = p.telegramUserId ?? (p.proxyFor ? Number(p.proxyFor) : undefined);
+  return id ? `<a href="tg://user?id=${id}">${t.esc(p.name)}</a>` : `<b>${t.esc(p.name)}</b>`;
+};
 
 /** Who may act for a squad member: themselves, or whoever added them if they're not on Telegram. */
 export function actsFor(p: SquadMember, telegramUserId: number): boolean {
@@ -187,10 +195,16 @@ export class PlanningFlow {
 
   // ---------- Questions (only after planning starts, one at a time) ----------
 
+  /** Cities first (needed to search), then dates, then each person's budget and food needs if nobody said. */
   private missing(s: ChatState): Question | undefined {
+    const asked = new Set(flow(s).asked ?? []);
     const noCity = s.squad.find((p) => !p.city || !resolveAirport(p.city));
     if (noCity) return { kind: "city", memberId: noCity.id };
     if (!s.trip.startDate || !s.trip.endDate) return { kind: "dates", memberId: s.squad[0].id };
+    const noBudget = s.squad.find((p) => !asked.has(`budget:${p.id}`) && !p.constraints.some((c) => c.kind === "budget"));
+    if (noBudget) return { kind: "budget", memberId: noBudget.id };
+    const noFood = s.squad.find((p) => !asked.has(`food:${p.id}`) && !p.constraints.some((c) => c.kind === "food"));
+    if (noFood) return { kind: "food", memberId: noFood.id };
     return undefined;
   }
 
@@ -211,6 +225,14 @@ export class PlanningFlow {
       const hint = p.city && !resolveAirport(p.city) ? ` I don't know an airport for “${t.esc(p.city)}”${suggestCities(p.city).length ? `: did you mean ${suggestCities(p.city).map((x) => `<b>${t.esc(x)}</b>`).join(" or ")}?` : "."}` : "";
       return void (await this.milo.say(s.chatId, `🛫 ${mention(p)}, which city are you flying from?${hint}`, kb));
     }
+    if (q.kind === "budget") {
+      const kb = new InlineKeyboard().text("₹10k", `q:${p.id}:10000`).text("₹15k", `q:${p.id}:15000`).text("₹20k", `q:${p.id}:20000`).row().text("No limit", `q:${p.id}:none`).text("Other ✍️", `q:${p.id}:other`);
+      return void (await this.milo.say(s.chatId, `💸 ${mention(p)}, what's your max for the whole trip (flights + stay)?`, kb));
+    }
+    if (q.kind === "food") {
+      const kb = new InlineKeyboard().text("Veg", `q:${p.id}:veg`).text("Non-veg", `q:${p.id}:none`).text("Jain", `q:${p.id}:jain`).row().text("No preference", `q:${p.id}:none`);
+      return void (await this.milo.say(s.chatId, `🍽 ${mention(p)}, any food needs?`, kb));
+    }
     const kb = new InlineKeyboard().text("This weekend", `q:${p.id}:this_weekend`).text("Next weekend", `q:${p.id}:next_weekend`).row().text("Pick dates ✍️", `q:${p.id}:other`);
     await this.milo.say(s.chatId, `📅 ${mention(p)}, which dates are we going?`, kb);
   }
@@ -225,6 +247,14 @@ export class PlanningFlow {
       }
       p.city = value.replace(/^./, (c) => c.toUpperCase());
       s.decisions.push(`${p.name} flies from ${p.city}`);
+    } else if (q.kind === "budget" || q.kind === "food") {
+      (flow(s).asked ??= []).push(`${q.kind}:${p.id}`);
+      const id = `${p.id}-${q.kind}-asked`;
+      if (q.kind === "budget") {
+        const m = value.toLowerCase().replace(/[,₹\s]/g, "").match(/^(\d+(?:\.\d+)?)(k)?$/);
+        const max = m ? Math.round(Number(m[1]) * (m[2] || Number(m[1]) < 1000 ? 1000 : 1)) : undefined;
+        if (max) p.constraints.push({ id, hard: true, kind: "budget", max });
+      } else if (value === "veg" || value === "jain") p.constraints.push({ id, hard: true, kind: "food", diet: value });
     } else {
       const range = weekend(value);
       if (range) [s.trip.startDate, s.trip.endDate] = range;
