@@ -121,6 +121,7 @@ const SYSTEM = `You read a friend group's trip chat for Milo, a trip-planning bo
 - "15k max" / "budget 20k" are rupees per person for the whole trip.
 - Resolve weekdays and dates using today's date and any trip dates in the messages.
 - A place proposed as where to go goes in destinations_mentioned, not in constraints.
+- A home city (people[].city) only comes from words like "from", "flying from", "based in", "I live in", "coming from". A place someone wants to visit is NEVER their home city, and someone's home city is NEVER a destination.
 - Use the sender's name for "I"/"me". Return empty arrays when nothing applies.`;
 
 export async function understand(messages: Heard[], state: ChatState, today: string): Promise<Understanding> {
@@ -235,7 +236,24 @@ export function apply(state: ChatState, u: Understanding, messages: Heard[]): Ap
   }
   for (const i of u.trip.interests ?? []) if (!state.trip.interests.includes(i)) state.trip.interests.push(i);
   for (const d of u.destinations_mentioned) if (!state.mentioned.some((m) => m.toLowerCase() === d.toLowerCase())) state.mentioned.push(d);
+  sanitize(state);
   return { sourceIds: [...sourceIds], addedByOthers, intents: u.intents };
+}
+
+/**
+ * Safety net for misreadings: nobody's home city is a place to go, and nobody
+ * flies "from" the destination (that person gets asked for their city instead).
+ */
+export function sanitize(state: ChatState) {
+  const lower = (x?: string) => x?.trim().toLowerCase();
+  const homes = new Set(state.squad.map((p) => lower(p.city)).filter(Boolean));
+  const dest = lower(state.trip.destination);
+  const wanted = new Set([dest, ...state.mentioned.map(lower)].filter(Boolean));
+  for (const p of state.squad) if (p.city && wanted.has(lower(p.city)) && (dest === lower(p.city) || state.mentioned.length === 1)) p.city = undefined;
+  const homesNow = new Set(state.squad.map((p) => lower(p.city)).filter(Boolean));
+  state.mentioned = state.mentioned.filter((m) => !homesNow.has(lower(m)));
+  if (dest && homesNow.has(dest)) state.trip.destination = undefined;
+  void homes;
 }
 
 /** Enough to start planning: two or more people and a place or dates. */

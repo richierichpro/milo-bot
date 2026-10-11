@@ -240,7 +240,7 @@ export class Milo {
       await ctx.answerCallbackQuery();
       if (action === "dest" && state.mentioned[0]) {
         state.trip.destination = state.mentioned[0];
-        state.decisions.push(`Going to ${state.trip.destination}`);
+        if (!state.decisions.includes(`Going to ${state.trip.destination}`)) state.decisions.push(`Going to ${state.trip.destination}`);
       } else await this.say(state.chatId, "Cool, I'll suggest a few once I've got everyone's limits 💡");
       await saveState(state);
       await this.updateTripCard(state);
@@ -343,7 +343,7 @@ export class Milo {
     const setup = state.data.setup;
     if (setup === "where" && state.mentioned.length > placesBefore) {
       state.trip.destination = state.mentioned.at(-1);
-      state.decisions.push(`Going to ${state.trip.destination}`);
+      if (!state.decisions.includes(`Going to ${state.trip.destination}`)) state.decisions.push(`Going to ${state.trip.destination}`);
       await saveState(state);
       await this.say(chatId, `📍 <b>${esc(state.trip.destination!)}</b>, nice!`);
       return this.askWhen(state);

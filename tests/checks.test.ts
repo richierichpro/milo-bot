@@ -57,3 +57,20 @@ test("suggests close city names for typos", () => {
   expect(suggestCities("Banglore")).toContain("bangalore");
   expect(suggestCities("Hydrabad")).toContain("hyderabad");
 });
+
+test("a home city is never the destination, and a friend's home city is never suggested", async () => {
+  const { sanitize } = await import("../src/bot/listen.js");
+  const { freshState } = await import("../src/bot/state.js");
+  const s = freshState(1);
+  s.squad = [
+    { id: "1", name: "Nihal", city: "Udaipur", constraints: [] },
+    { id: "2", name: "Rishi", city: "Mumbai", constraints: [] },
+  ];
+  s.mentioned = ["Udaipur", "Mumbai"];
+  s.trip.destination = "Udaipur";
+  sanitize(s);
+  expect(s.squad[0].city).toBeUndefined(); // Milo will ask Nihal where he's flying from
+  expect(s.squad[1].city).toBe("Mumbai");
+  expect(s.mentioned).toEqual(["Udaipur"]);
+  expect(s.trip.destination).toBe("Udaipur");
+});
