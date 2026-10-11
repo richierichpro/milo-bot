@@ -12,7 +12,8 @@
     "simulate": "tsx --env-file-if-exists=.env.local scripts/simulate.ts",
     "reality-check": "tsx --env-file=.env.local scripts/reality-check.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "record-demo": "tsx scripts/record-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

@@ -10,7 +10,7 @@ P0
 - [x] 5 Heard card, questions, vote system, destination vote
 - [x] 6 Solve within limits + negotiate
 - [x] 7 Itinerary with logistics, final plan cards, boarding passes
-- [ ] 8 Demo mode, simulator, README  (STOP: run the full demo in my Telegram test group)
+- [x] 8 Demo mode, simulator, README  (STOP: run the full demo in my Telegram test group)
 P1 (ask me before each)
 - [ ] 9 Conflict votes + split day
 - [ ] 10 Packages vote (Budget / Sweet spot / Splurge)
