@@ -121,6 +121,7 @@ const SYSTEM = `You read a friend group's trip chat for Milo, a trip-planning bo
 - "15k max" / "budget 20k" are rupees per person for the whole trip.
 - Resolve weekdays and dates using today's date and any trip dates in the messages.
 - A place proposed as where to go goes in destinations_mentioned, not in constraints.
+- Dates for the trip ("we go 20–23 Nov", or any answer to "when?") go in trip.start_date/end_date, never as a person's dates constraint. A dates constraint is only a personal availability limit that differs from the group ("I can only do 21–23").
 - A home city (people[].city) only comes from words like "from", "flying from", "based in", "I live in", "coming from". A place someone wants to visit is NEVER their home city, and someone's home city is NEVER a destination.
 - Use the sender's name for "I"/"me". Return empty arrays when nothing applies.`;
 
@@ -233,10 +234,18 @@ export function apply(state: ChatState, u: Understanding, messages: Heard[]): Ap
     member.constraints = [...member.constraints.filter((x) => !sameSlot(x, c)), c];
     sourceIds.add(raw.source_message_id);
   }
+  // Dates someone gives for the trip ("20–23 Nov", an answer to "When?") are the group's dates, not that
+  // person's limit. A lone dates "limit" before the trip has dates is really the trip's dates.
+  const isDates = (c: Constraint): c is Extract<Constraint, { kind: "dates" }> => c.kind === "dates";
+  if (!(u.trip.start_date && u.trip.end_date) && !state.trip.startDate) {
+    const fresh = state.squad.flatMap((p) => p.constraints.filter(isDates).filter((c) => c.sourceMessageId !== undefined && sourceIds.has(c.sourceMessageId)));
+    if (fresh.length === 1) u.trip = { ...u.trip, start_date: fresh[0].start, end_date: fresh[0].end };
+  }
   if (u.trip.start_date && u.trip.end_date) {
     state.trip.startDate = u.trip.start_date;
     state.trip.endDate = u.trip.end_date;
   }
+  for (const p of state.squad) p.constraints = p.constraints.filter((c) => !(isDates(c) && c.start === state.trip.startDate && c.end === state.trip.endDate));
   for (const i of u.trip.interests ?? []) if (!state.trip.interests.includes(i)) state.trip.interests.push(i);
   for (const d of u.destinations_mentioned) if (!state.mentioned.some((m) => m.toLowerCase() === d.toLowerCase())) state.mentioned.push(d);
   sanitize(state);
