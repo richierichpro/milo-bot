@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- raw SerpApi JSON is parsed here */
 import { resolveAirport } from "./airports.js";
 import { checkEvents, checkPlaces } from "./checks.js";
-import { normalizeEvents, normalizeFlights, normalizeHotels, normalizePlaces } from "./normalize.js";
+import { normalizeFlights, normalizeHotels, normalizePlaces } from "./normalize.js";
 import * as q from "./queries.js";
 import { serpSearch, type SerpParams } from "./serpapi.js";
 import { selectFlightOptions } from "./squad.js";
-import type { CallLogEntry, Constraint, Drop, Event, Flight, Hotel, Place, SquadMember } from "./types.js";
+import type { CallLogEntry, Constraint, Drop, Flight, Hotel, Place, SquadMember } from "./types.js";
 
 export type Trip = { destination: string; startDate: string; endDate: string; interests: string[] };
 
@@ -105,16 +105,20 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
   const diets = [...new Set(squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "food" && c.hard ? [c.diet] : []))))];
   // Only must-dos that name a place ("Chapora fort") get their own search; "a proper beach day" doesn't.
   const mustDos = squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "must_do" && /[A-Z]/.test(c.what) ? [c.what] : [])));
+  // Sights and things to do come first: preferences are added to the trip, they aren't the whole trip.
   const mapsQueries = [
     `top attractions in ${dest}`,
+    `things to do in ${dest}`,
+    `hidden gems in ${dest}`,
+    `adventure activities in ${dest}`,
     `best restaurants in ${dest}`,
-    `best cafes in ${dest}`,
     ...trip.interests.slice(0, KEEP.interests).map((i) => `best ${i} in ${dest}`),
     ...diets.filter((d) => FOOD_QUERY[d]).map((d) => `${FOOD_QUERY[d]} in ${dest}`),
     ...mustDos.map((m) => (m.toLowerCase().includes(dest.toLowerCase()) ? m : `${m} ${dest}`)),
   ];
 
-  const [hotels, placeLists, rawEvents] = await Promise.all([
+  // No events search: Google mostly lists the next few weeks, rarely the trip dates. Activities come from Maps instead.
+  const [hotels, placeLists] = await Promise.all([
     run(
       `Google Hotels · hotels in ${dest}${cap ? ` under ₹${cap}/night` : ""}`,
       q.hotelParams(dest, trip.startDate, trip.endDate, { maxPrice: cap }),
@@ -126,11 +130,10 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
         run(`Google Maps · ${query}`, q.mapsParams(query), (j) => normalizePlaces(j).slice(0, KEEP.placesPerQuery), [] as Place[]),
       ),
     ),
-    run(`Google Events · ${q.eventsQuery(dest)}`, q.eventsParams(q.eventsQuery(dest)), (j) => normalizeEvents(j, Number(trip.startDate.slice(0, 4))), [] as Event[]),
   ]);
 
   const places = checkPlaces([...new Map(placeLists.flat().map((p) => [p.id, p])).values()]);
-  const events = checkEvents(rawEvents, trip);
+  const events = checkEvents([], trip);
 
   const resolved = async (m: Record<string, Promise<Flight[]>>) =>
     Object.fromEntries(await Promise.all(Object.entries(m).map(async ([k, v]) => [k, await v] as const)));

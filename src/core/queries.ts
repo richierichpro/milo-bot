@@ -96,6 +96,9 @@ export function exploreParams(from: string, outbound: string, ret: string): Serp
  * "events in Goa". Adding the month ("events in Goa November 2026") makes Google
  * drop the events box entirely, so we search plainly and filter by date later.
  */
-export function eventsQuery(destination: string): string {
-  return `events in ${destination}`;
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "events in Goa in November": the month makes Google list events for the trip, not just the next few weeks ("… November 2026" returns none). */
+export function eventsQuery(destination: string, startDate?: string): string {
+  return startDate ? `events in ${destination} in ${MONTHS[Number(startDate.slice(5, 7)) - 1]}` : `events in ${destination}`;
 }

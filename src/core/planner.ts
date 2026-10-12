@@ -29,7 +29,9 @@ export type TripPlan = {
   createdAt: string;
 };
 
-export const MAX_STOPS_FULL_DAY = 4;
+export const MAX_STOPS_FULL_DAY = 5;
+/** Sights or activities ([do]) every full day needs, so a day isn't only meals and bars. */
+export const MIN_DO_FULL_DAY = 2;
 export const SHORT_HOP_KM = 3;
 export const HOTEL_FAR_KM = 10;
 /** A day whose places are further apart than this isn't "one area". */
@@ -94,6 +96,8 @@ Rules:
 - At most ${MAX_STOPS_FULL_DAY} stops on a full day; light arrival and departure days. Nothing before the squad is together on the first day or after they leave for the airport on the last day.
 - Keep each day in one area (use the @lat,lng). Meals at meal times (lunch 12:30–14:30, dinner 19:30–22:00). A beach or viewpoint near sunset. Respect opening hours shown.
 - On beach trips leave a free afternoon block on one day; after a late night, start the next day late.
+- Each place is tagged [do] (sights, nature, culture, activities), [eat] or [night]. Build every full day around at least ${MIN_DO_FULL_DAY} [do] stops: the destination's highlights plus a lesser-known gem (high rating, fewer reviews). Then at most 2 [eat] and 1 [night] per day.
+- The group's interests, must-dos and preferences must be in the trip, but they aren't the whole trip.
 - If anyone is veg/jain, every full day needs at least one meal stop from the places marked [veg]. Include every must-do that is in the list.
 - Notes: at most 15 words, only facts present in that candidate's line (its category, description, rating words). No superlatives that aren't in its line (no "famous", "iconic", "best"), no numbers, no other place names. Describe events exactly as titled; a tribute or candlelight concert is never the artist performing.
 - Titles and the summary: no prices, ratings or numbers.`;
@@ -104,9 +108,17 @@ export const alias = { place: (i: number) => `p${i + 1}`, event: (i: number) => 
 const WEEKDAY = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const weekday = (date: string) => WEEKDAY[new Date(`${date}T00:00:00Z`).getUTCDay()];
 
+/** What a place is for: something to see or do, a meal, or a night out. */
+export function placeKind(p: Pick<Place, "category">): "do" | "eat" | "night" {
+  const c = (p.category ?? "").toLowerCase();
+  if (/night ?club|disco|pub\b|lounge|\bbar\b|cocktail|brewery|casino/.test(c)) return "night";
+  if (/restaurant|cafe|café|coffee|bistro|bakery|dhaba|eatery|food|shack|diner|sweet|kitchen|grill|pizza|bar & grill/.test(c)) return "eat";
+  return "do";
+}
+
 function placeLine(p: Place, i: number, dates: string[], vegOk: boolean): string {
   const hours = [...new Set(dates.map((d) => p.operatingHours?.[weekday(d)]).filter(Boolean))].join(" / ") || "hours not listed";
-  return [alias.place(i), p.name, p.category ?? "place", p.rating ? `${p.rating}★ (${p.reviews ?? 0})` : "no rating", p.priceLevel ?? "-", p.description ?? "-", hours, `@${p.lat.toFixed(3)},${p.lng.toFixed(3)}`, vegOk ? "[veg]" : ""]
+  return [alias.place(i), p.name, p.category ?? "place", p.rating ? `${p.rating}★ (${p.reviews ?? 0})` : "no rating", p.priceLevel ?? "-", p.description ?? "-", hours, `@${p.lat.toFixed(3)},${p.lng.toFixed(3)}`, `[${placeKind(p)}]`, vegOk ? "[veg]" : ""]
     .filter(Boolean)
     .join(" | ");
 }
@@ -153,7 +165,7 @@ function prompt(pool: CandidatePool, trip: Trip, sol: Solution, squad: SquadMemb
     `Sunset: ${dates.map((d) => `${d} ${sunsetAt(d, hotel ?? pool.places[0])}`).join(", ")}.`,
     hotel ? `Hotel (fixed): ${hotel.name} @${hotel.lat.toFixed(3)},${hotel.lng.toFixed(3)}. Prefer places near it.` : "",
     "",
-    "PLACES (id | name | category | rating | price | description | hours on trip days | location | diet):",
+    "PLACES (id | name | category | rating | price | description | hours on trip days | location | kind | diet):",
     ...pool.places.map((p, i) => placeLine(p, i, dates, vegNeeded && suitsDiet(p, "veg"))),
     "",
     events.length ? "EVENTS (id | title | date | venue | address):" : "EVENTS: none on these dates.",
@@ -242,6 +254,12 @@ export async function planTrip(
       for (const c of p.constraints)
         if (c.kind === "must_do" && /[A-Z]/.test(c.what) && [...lookup.values()].some((x) => "name" in x && x.name.toLowerCase().includes(c.what.toLowerCase())) && !d.days.some((day) => day.stops.some((s) => { const x = lookup.get(s.id); return x && "name" in x && x.name.toLowerCase().includes(c.what.toLowerCase()); })))
           out.push(`Include ${p.name}'s must-do ${c.what}.`);
+    const doAvailable = pool.places.filter((p) => placeKind(p) === "do").length;
+    d.days.forEach((day, i) => {
+      const full = i > 0 && i < d.days.length - 1;
+      const dos = day.stops.filter((s) => { const p = lookup.get(s.id); return !!p && ("title" in p || placeKind(p) === "do"); }).length;
+      if (full && doAvailable >= MIN_DO_FULL_DAY * (d.days.length - 2) && dos < MIN_DO_FULL_DAY) out.push(`${day.date} has only ${dos} [do] stop${dos === 1 ? "" : "s"}; add sights or activities (at least ${MIN_DO_FULL_DAY}).`);
+    });
     d.days.forEach((day) => {
       const pts = day.stops.map((s) => lookup.get(s.id)).filter((x): x is Place => !!x && "lat" in x);
       let spread = 0;
