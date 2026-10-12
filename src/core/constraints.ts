@@ -1,3 +1,4 @@
+import { matchesWish } from "./themes.js";
 import { formatINR } from "./money.js";
 import type { Constraint, CostLine, Day, FlightPick, Hotel, Place, SquadMember, Stop } from "./types.js";
 
@@ -90,12 +91,10 @@ function checkOne(c: Constraint, person: SquadMember, plan: PlanForCheck): Const
     }
     case "must_do": {
       if (!plan.days) return result(false, "Checked once the days are planned", true);
-      // A named place must appear by name; a wish like "a proper beach day" matches a stop's name or category.
-      const want = c.what.toLowerCase();
-      const words = want.split(/\W+/).filter((w) => w.length > 3 && !["proper", "least", "some", "want", "with", "good", "nice", "really"].includes(w));
-      const text = (s: Stop) => (s.kind === "place" ? `${s.item.name} ${s.item.category ?? ""}` : s.item.title).toLowerCase();
-      const at = plan.days.findIndex((d) => d.stops.some((s) => (/[A-Z]/.test(c.what) ? text(s).includes(want) : words.some((w) => text(s).includes(w)))));
-      const stop = at >= 0 ? plan.days[at].stops.find((s) => (/[A-Z]/.test(c.what) ? text(s).includes(want) : words.some((w) => text(s).includes(w)))) : undefined;
+      // Same matching as the planner: "visit the Bastian Goa" → Bastian Riviera; "bungee jumping" → a bungee centre.
+      const hit = (st: Stop) => (st.kind === "place" ? matchesWish(st.item, c.what) : st.item.title.toLowerCase().includes(c.what.toLowerCase()));
+      const at = plan.days.findIndex((d) => d.stops.some(hit));
+      const stop = at >= 0 ? plan.days[at].stops.find(hit) : undefined;
       return result(at >= 0, at >= 0 ? `${c.what}: ${stop!.kind === "place" ? stop!.item.name : stop!.item.title} on day ${at + 1}` : `${c.what} isn't in the plan`);
     }
     default:

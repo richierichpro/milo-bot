@@ -1,11 +1,10 @@
 import { InlineKeyboard, InputFile, InputMediaBuilder } from "grammy";
 import { renderCard } from "../cards/render.js";
 import * as t from "../cards/templates.js";
-import { checkPerson } from "../core/constraints.js";
 import type { TripPlan } from "../core/planner.js";
 import type { Day, SquadMember } from "../core/types.js";
 import type { Milo } from "./conversation.js";
-import { costHtml, dateRange, dayLabel, engineLabel, flightsHtml, hotelHtml, passHtml, proofText, timeAgo } from "./render.js";
+import { costHtml, dateRange, dayLabel, engineLabel, flightsHtml, hotelHtml, proofText, timeAgo } from "./render.js";
 import type { ChatState } from "./state.js";
 
 // Posts the finished plan: albums of cards, each followed by one short text with
@@ -85,6 +84,14 @@ export function passText(plan: TripPlan, squad: SquadMember[]): string {
       return `${ok === all ? "✅" : "⚠️"} <b>${e(p.name)}</b>: ${ok}/${all} met${waived ? ` (${waived} agreed exception)` : ""}`;
     })
     .join("\n");
+}
+
+/** "✅ Everyone's limits are met", or who has an exception. */
+export function limitsLine(plan: TripPlan, squad: SquadMember[]): string {
+  const off = squad.filter((p) => (plan.checks[p.id] ?? []).some((c) => !c.pending && !c.ok && !c.waived));
+  const waived = squad.filter((p) => (plan.checks[p.id] ?? []).some((c) => c.waived));
+  if (!off.length && !waived.length) return "✅ <b>Everyone's limits are met.</b> Ready to book?";
+  return passText(plan, squad);
 }
 
 /** One final message with everything to book: flights, the stay, every stop, and who pays what. */
@@ -171,13 +178,6 @@ export async function postPlan(milo: Milo, s: ChatState, plan: TripPlan) {
   const cost = await render(costHtml(sol.costs, s.squad, sol.nights, sol.rooms));
   await milo.send(chatId, () => api.sendPhoto(chatId, new InputFile(cost, "cost.png"), { caption: "💸 <b>Cost split</b> · flights + hotel share per person", parse_mode: "HTML" }));
 
-  const plan2 = { startDate: plan.trip.startDate, endDate: plan.trip.endDate, flights: sol.flights, costs: sol.costs, hotel: sol.hotel, days: plan.days };
-  const passes: Buffer[] = [];
-  for (const [i, p] of s.squad.entries()) {
-    const checks = checkPerson(plan2, p);
-    passes.push(await render(passHtml(p, i, sol.flights.find((f) => f.person === p.name), sol.costs.find((c) => c.person === p.name), checks, plan.trip, sol.hotel?.name)));
-  }
-  await album(passes, `🎫 <b>Boarding passes</b> · why this plan works for each of you`);
-  await milo.say(chatId, passText(plan, s.squad), new InlineKeyboard().text("Booking list 🧾", "booking").text("See sources 🔎", "sources"));
+  // No boarding passes or limits summary (too much): the booking list closes the plan.
   await milo.say(chatId, bookingList(plan));
 }
