@@ -13,6 +13,7 @@ const STAGE_LABEL: Record<Stage, string> = {
   destination_vote: "🗳 Picking where to go",
   solving: "🔎 Searching within everyone's limits",
   negotiating: "🤝 Sorting out a limit",
+  hotel_vote: "🏨 Picking the stay",
   planning: "🗺 Building the plan",
   done: "🎉 Plan ready",
 };

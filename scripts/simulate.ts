@@ -79,9 +79,13 @@ for (let i = 0; i < 16; i++) {
   const q = (st.data as { question?: { memberId: string; kind: string; pending?: string[] } }).question;
   if (!q) break;
   if (q.memberId === "all") {
-    // One group question: each friend taps their own answer.
+    // One group question: budgets are typed, food is a tap.
     const who = st.squad.find((p) => p.id === q.pending![0])!.name;
-    await tapButton(who, (b) => b.data === "q:all:none");
+    if (q.kind === "budget") {
+      console.log(`💬 ${who}: no limit`);
+      await tg.say(bot, user(who), "no limit");
+      print();
+    } else await tapButton(who, (b) => b.data === "q:all:none");
     continue;
   }
   const who = st.squad.find((p) => p.id === q.memberId)!.name;
@@ -98,9 +102,18 @@ for (const who of ["Aarav", "Meera", "Kabir", "Ishita"]) {
 }
 
 console.log("\n— Solving within everyone's limits —");
-for (let i = 0; i < 4; i++) {
+for (let i = 0; i < 6; i++) {
   const st = await loadState(tg.chatId);
-  const sv = st.data.solve as { asking?: { memberId: string }; quick?: { status: string } } | undefined;
+  const sv = st.data.solve as { asking?: { memberId: string }; quick?: { status: string }; hotelVote?: { done?: boolean; votes: Record<string, number> } } | undefined;
+  if (sv?.hotelVote && !sv.hotelVote.done) {
+    // The group picks the stay: three of four tap A, Ishita taps B.
+    for (const [who, pick] of [["Aarav", 0], ["Meera", 0], ["Ishita", 1], ["Kabir", 0]] as const) {
+      const now = (await loadState(tg.chatId)).data.solve as typeof sv;
+      if (now?.hotelVote?.done) break;
+      await tapButton(who, (b) => b.data.startsWith("hv:") && b.data.endsWith(`:${pick}`));
+    }
+    continue;
+  }
   if (sv?.asking) {
     const who = st.squad.find((p) => p.id === sv.asking!.memberId)!.name;
     await tapButton(who, (b) => b.data === `neg:${sv.asking!.memberId}:0`, "(the option that fits her cap)");

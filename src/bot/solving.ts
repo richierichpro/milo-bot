@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { InlineKeyboard, type Context } from "grammy";
+import { InlineKeyboard, InputFile, InputMediaBuilder, type Context } from "grammy";
 import { esc } from "../cards/templates.js";
 import { gatherCandidates, type CandidatePool, type Trip } from "../core/gather.js";
 import { planTrip, type TripPlan } from "../core/planner.js";
@@ -11,6 +11,9 @@ import type { Milo } from "./conversation.js";
 import { actsFor, mention, type PlanningFlow } from "./flow.js";
 import { loadState, saveState, type ChatState } from "./state.js";
 import { newQuickVote, quickTick, type QuickVote } from "./votes.js";
+import { hotelOptions, hotelVoteText, hotelWinner, letter, type HotelVote } from "./hotelvote.js";
+import { hotelHtml } from "./render.js";
+import { renderCard } from "../cards/render.js";
 
 // Solve within everyone's limits; when a hard limit breaks, ask only the person
 // affected, with 2–3 real options. Changes that touch everyone get a quick 👍/👎.
@@ -19,6 +22,7 @@ type SolveData = {
   choice?: { priceFirst: string[]; hotelId?: string };
   asking?: { memberId: string; options: Compromise[] };
   quick?: QuickVote & { option: Compromise; by: string };
+  hotelVote?: HotelVote;
 };
 const sd = (s: ChatState) => ((s.data.solve ??= {}) as SolveData);
 const tripOf = (s: ChatState): Trip => ({ destination: s.trip.destination!, startDate: s.trip.startDate!, endDate: s.trip.endDate!, interests: s.trip.interests });
@@ -96,10 +100,12 @@ export class SolvingFlow {
   }
 
   /** Check every hard limit; ask about the first one that breaks, or move on. */
-  private async check(s: ChatState, pool: CandidatePool) {
+  private async check(s: ChatState, pool: CandidatePool): Promise<void> {
     const sol = this.current(s, pool);
     const broken = problems(sol, s.squad);
     if (!broken.length) {
+      // Everyone's limits are met: the group picks the stay once, then Milo builds the days.
+      if (!sd(s).hotelVote?.done) return this.startHotelVote(s, pool, sol);
       s.stage = "planning";
       s.pending = [];
       s.decisions.push(`Everyone's hard limits met${s.squad.some((p) => p.constraints.some((c) => c.waived)) ? " (with agreed exceptions)" : ""}`);
@@ -157,6 +163,20 @@ export class SolvingFlow {
       await this.applyOption(s, member, option);
       return true;
     }
+    if (data.startsWith("hv:")) {
+      const [, id, idx] = data.split(":");
+      const v = sd(s).hotelVote;
+      if (!v || v.id !== id || v.done) { await ctx.answerCallbackQuery({ text: "The stay's already picked." }); return true; }
+      // A tap counts for whoever tapped; once they've voted, for a friend they added who hasn't.
+      const mine = s.squad.filter((p) => actsFor(p, tg));
+      if (!mine.length) { await ctx.answerCallbackQuery({ text: "Only the squad votes on this." }); return true; }
+      const voter = mine.find((p) => p.telegramUserId === tg && v.votes[p.id] === undefined) ?? mine.find((p) => v.votes[p.id] === undefined) ?? mine.find((p) => p.telegramUserId === tg) ?? mine[0];
+      v.votes[voter.id] = Number(idx);
+      await ctx.answerCallbackQuery({ text: `${letter(Number(idx))} for ${voter.name} 👍` });
+      await saveState(s);
+      await this.settleHotelVote(s);
+      return true;
+    }
     if (data === "booking") {
       const plan = s.data.plan as TripPlan | undefined;
       await ctx.answerCallbackQuery();
@@ -184,6 +204,55 @@ export class SolvingFlow {
       return true;
     }
     return false;
+  }
+
+  private async startHotelVote(s: ChatState, pool: CandidatePool, sol: Solution): Promise<void> {
+    const options = hotelOptions(pool, tripOf(s), s.squad, sd(s).choice?.priceFirst ?? []);
+    const v: HotelVote = { id: randomBytes(3).toString("hex"), options, votes: {} };
+    sd(s).hotelVote = v;
+    if (options.length < 2) {
+      v.done = true;
+      if (options[0]) (sd(s).choice ??= { priceFirst: [] }).hotelId = options[0].hotelId;
+      await saveState(s);
+      return this.check(s, pool);
+    }
+    s.stage = "hotel_vote";
+    s.pending = ["Everyone picks the stay"];
+    await saveState(s);
+    await this.milo.updateTripCard(s);
+    const chatId = s.chatId;
+    const api = this.milo.bot.api;
+    await api.sendChatAction(chatId, "upload_photo").catch(() => {});
+    const hotels = options.map((o) => pool.hotels.find((h) => h.id === o.hotelId)!);
+    const pngs = [];
+    for (const h of hotels) pngs.push((await renderCard(hotelHtml(h, sol.nights, sol.rooms, undefined))).png);
+    const media = pngs.map((png, i) => InputMediaBuilder.photo(new InputFile(png, `stay-${i}.png`), { caption: `${letter(i)} · ${esc(hotels[i].name)}`, parse_mode: "HTML" }));
+    await this.milo.send(chatId, () => api.sendMediaGroup(chatId, media)).catch(() => {});
+    const kb = new InlineKeyboard();
+    options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
+    const msg = await this.milo.say(chatId, hotelVoteText(v, pool.hotels, s.squad, sol.nights), kb);
+    v.messageId = msg.message_id;
+    await saveState(s);
+  }
+
+  private async settleHotelVote(s: ChatState) {
+    const v = sd(s).hotelVote;
+    if (!v || v.done) return;
+    const pool = await this.pool(s);
+    const nights = this.current(s, pool).nights;
+    const win = hotelWinner(v, s.squad.length);
+    if (win !== undefined) v.done = true;
+    const kb = new InlineKeyboard();
+    if (!v.done) v.options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
+    if (v.messageId) await this.milo.bot.api.editMessageText(s.chatId, v.messageId, hotelVoteText(v, pool.hotels, s.squad, nights), { parse_mode: "HTML", reply_markup: v.done ? undefined : kb, link_preview_options: { is_disabled: true } }).catch(() => {});
+    if (win === undefined) { await saveState(s); return; }
+    const pick = v.options[win];
+    const hotel = pool.hotels.find((h) => h.id === pick.hotelId);
+    (sd(s).choice ??= { priceFirst: [] }).hotelId = pick.hotelId;
+    s.decisions.push(`Stay: ${hotel?.name ?? "?"}`);
+    await saveState(s);
+    await this.milo.say(s.chatId, `🏨 Going with <b>${esc(hotel?.name ?? "")}</b>! Building your days now…`);
+    await this.check(s, pool);
   }
 
   private async quickVote(s: ChatState, member: SquadMember, option: Compromise) {

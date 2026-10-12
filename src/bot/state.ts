@@ -5,7 +5,7 @@ import type { SquadMember } from "../core/types.js";
 // One JSON file per chat in .data/chats/. Message text is never stored: only
 // the limits Milo extracted and the id of the message each came from.
 
-export type Stage = "intro" | "listening" | "heard" | "questions" | "destination_vote" | "solving" | "negotiating" | "planning" | "done";
+export type Stage = "intro" | "listening" | "heard" | "questions" | "destination_vote" | "solving" | "negotiating" | "hotel_vote" | "planning" | "done";
 
 export type ChatState = {
   chatId: number;
