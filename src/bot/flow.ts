@@ -179,6 +179,23 @@ export class PlanningFlow {
         await this.recordPick(s, g, p, value);
         return true;
       }
+      // Someone answering for the whole group ("30k for all of us", "same for everyone").
+      if (value && /\b(all|every ?one|every ?body|each|we|us|same|whole group|guys)\b/i.test(heard.text)) {
+        await this.milo.bot.api.setMessageReaction(s.chatId, heard.messageId, [{ type: "emoji", emoji: "👍" }]).catch(() => {});
+        for (const id of [...(g.pending ?? [])]) {
+          const x = s.squad.find((m) => m.id === id);
+          if (x) await this.recordPick(s, g, x, value);
+        }
+        return true;
+      }
+      // A number from someone who already answered: say who Milo is still waiting on.
+      if (value) {
+        const waiting = (g.pending ?? []).map((id) => s.squad.find((m) => m.id === id)).filter((m): m is SquadMember => !!m);
+        if (waiting.length) {
+          await this.milo.say(s.chatId, `👍 Still need ${waiting.map((m) => mention(m)).join(" and ")}'s max. Type it here, or say “same for all”.`);
+          return true;
+        }
+      }
     }
     const who = s.squad.find((p) => actsFor(p, heard.userId) && (p.id === f.fixing || p.id === f.awaitingText?.memberId));
     if (!who) return false;
@@ -494,12 +511,14 @@ function weekend(value: string): [string, string] | undefined {
 
 /** A typed budget: "30000 is my budget", "25k", "₹30,000", "1.5 lakh", "no limit". Undefined when it isn't one. */
 export function typedBudget(text: string): string | undefined {
-  const x = text.toLowerCase().replace(/[,₹]/g, "");
+  // "35000rs", "rs 35k", "₹30,000/-" all count.
+  const x = text.toLowerCase().replace(/[,₹]/g, "").replace(/\b(rs|inr|rupees?)\.?/g, " ").replace(/(\d)(rs|inr|\/-)/g, "$1 ");
   if (/\b(no limit|no budget|unlimited|no cap|anything)\b/.test(x)) return "none";
-  const m = x.match(/(\d+(?:\.\d+)?)\s*(k|thousand|l|lakh|lac)?\b/);
+  const m = x.match(/(\d+(?:\.\d+)?)\s*(k|thousand|l|lakh|lac)?(?![\d.])/);
   if (!m) return undefined;
   const num = Number(m[1]);
-  // A bare small number ("30") means thousands.
+  // A bare small number means thousands, but only when it's the whole message ("30", not "Day 4").
+  if (!m[2] && num < 1000 && !/^\s*\d+(\.\d+)?\s*$/.test(x)) return undefined;
   const n = num * (m[2]?.startsWith("l") ? 100_000 : m[2] || num < 1000 ? 1000 : 1);
   return n >= 1000 ? String(Math.round(n)) : undefined;
 }
