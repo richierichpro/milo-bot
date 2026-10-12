@@ -5,6 +5,7 @@ import { normalizeFlights, normalizeHotels, normalizePlaces } from "./normalize.
 import * as q from "./queries.js";
 import { serpSearch, type SerpParams } from "./serpapi.js";
 import { selectFlightOptions } from "./squad.js";
+import { capActivities } from "./themes.js";
 import type { CallLogEntry, Constraint, Drop, Event, Flight, Hotel, Place, SquadMember } from "./types.js";
 
 export type Trip = { destination: string; startDate: string; endDate: string; interests: string[] };
@@ -20,7 +21,7 @@ export type CandidatePool = {
   drops: Drop[];
 };
 
-const KEEP = { hotels: 12, placesPerQuery: 10, events: 8, interests: 3 };
+const KEEP = { hotels: 12, placesPerQuery: 10, perSightQuery: 16, perInterest: 4, events: 8, interests: 3, activityShops: 3 };
 
 /** Share of the tightest per-person budget we allow for the stay when capping hotel prices. */
 export const HOTEL_BUDGET_SHARE = 0.5;
@@ -105,14 +106,14 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
   const diets = [...new Set(squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "food" && c.hard ? [c.diet] : []))))];
   // Only must-dos that name a place ("Chapora fort") get their own search; "a proper beach day" doesn't.
   const mustDos = squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "must_do" && /[A-Z]/.test(c.what) ? [c.what] : [])));
-  // Sights and things to do come first: preferences are added to the trip, they aren't the whole trip.
+  // Sights first, from four angles (famous, popular, offbeat, historic): preferences are added to the trip, they aren't the whole trip.
+  // "hidden gems in X" returns nothing on Maps and "adventure activities" is all water-sports shops, so neither is used.
+  const sightQueries = [`top attractions in ${dest}`, `things to do in ${dest}`, `offbeat places to visit in ${dest}`, `historical places in ${dest}`];
+  const interestQueries = trip.interests.slice(0, KEEP.interests).map((i) => `best ${i} in ${dest}`);
   const mapsQueries = [
-    `top attractions in ${dest}`,
-    `things to do in ${dest}`,
-    `hidden gems in ${dest}`,
-    `adventure activities in ${dest}`,
+    ...sightQueries,
     `best restaurants in ${dest}`,
-    ...trip.interests.slice(0, KEEP.interests).map((i) => `best ${i} in ${dest}`),
+    ...interestQueries,
     ...diets.filter((d) => FOOD_QUERY[d]).map((d) => `${FOOD_QUERY[d]} in ${dest}`),
     ...mustDos.map((m) => (m.toLowerCase().includes(dest.toLowerCase()) ? m : `${m} ${dest}`)),
   ];
@@ -127,12 +128,14 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
     ),
     Promise.all(
       [...new Set(mapsQueries)].map((query) =>
-        run(`Google Maps · ${query}`, q.mapsParams(query), (j) => normalizePlaces(j).slice(0, KEEP.placesPerQuery), [] as Place[]),
+        // An interest ("cruise") gets a few picks, not a dozen operators.
+        run(`Google Maps · ${query}`, q.mapsParams(query), (j) => normalizePlaces(j).slice(0, interestQueries.includes(query) ? KEEP.perInterest : sightQueries.includes(query) ? KEEP.perSightQuery : KEEP.placesPerQuery), [] as Place[]),
       ),
     ),
   ]);
 
-  const places = checkPlaces([...new Map(placeLists.flat().map((p) => [p.id, p])).values()]);
+  const mustMatch = (p: Place) => mustDos.some((m) => p.name.toLowerCase().includes(m.toLowerCase()));
+  const places = checkPlaces(capActivities([...new Map(placeLists.flat().map((p) => [p.id, p])).values()], KEEP.activityShops, mustMatch));
   const events = checkEvents([], trip);
 
   const resolved = async (m: Record<string, Promise<Flight[]>>) =>
