@@ -1,4 +1,4 @@
-import { fame, placeKind, theme } from "./themes.js";
+import { fame, matchesWish, placeKind, theme } from "./themes.js";
 import * as SunCalc from "suncalc";
 import { airportCoords } from "./airports.js";
 import { isOpenAt } from "./checks.js";
@@ -102,7 +102,7 @@ Rules:
 - Plan like a well-travelled local friend: every full day has a feel (e.g. old-town heritage, waterfalls and nature, a quiet beach and a fort at sunset) with at least ${MIN_DO_FULL_DAY} [do] stops of DIFFERENT themes. Cover the [highlight]s, and put at least one [gem] in the trip for every two days.
 - Variety: never the same theme twice in a day; each theme at most twice in the trip; [do:activity] places (water sports, cruises, operators) at most ${MAX_ACTIVITIES} in the whole trip unless the group asked for that activity. Then at most 2 [eat] and 1 [night] per day.
 - The group's interests, must-dos and preferences must be in the trip, but they aren't the whole trip.
-- If anyone is veg/jain, every full day needs at least one meal stop from the places marked [veg]. Include every must-do that is in the list.
+- If anyone is veg/jain, every full day needs at least one meal stop from the places marked [veg]. Every must-do MUST be in the plan when a matching place is listed (a must-do activity like "bungee jumping" matches a place of that kind); these count as asked for, not as extra activities.
 - Notes: at most 15 words, only facts present in that candidate's line (its category, description, rating words). No superlatives that aren't in its line (no "famous", "iconic", "best"), no numbers, no other place names. Describe events exactly as titled; a tribute or candlelight concert is never the artist performing.
 - Titles and the summary: no prices, ratings or numbers.`;
 
@@ -252,10 +252,14 @@ export async function planTrip(
         const full = i > 0 && i < d.days.length - 1;
         if (full && !day.stops.some((s) => { const p = lookup.get(s.id); return p && "name" in p && suitsDiet(p, "veg"); })) out.push(`${day.date} needs a [veg] meal stop.`);
       });
+    // Every must-do that the searches found goes in, named or not ("bungee jumping" → a bungee centre).
     for (const p of squad)
-      for (const c of p.constraints)
-        if (c.kind === "must_do" && /[A-Z]/.test(c.what) && [...lookup.values()].some((x) => "name" in x && x.name.toLowerCase().includes(c.what.toLowerCase())) && !d.days.some((day) => day.stops.some((s) => { const x = lookup.get(s.id); return x && "name" in x && x.name.toLowerCase().includes(c.what.toLowerCase()); })))
-          out.push(`Include ${p.name}'s must-do ${c.what}.`);
+      for (const c of p.constraints) {
+        if (c.kind !== "must_do" || c.waived) continue;
+        const options = pool.places.flatMap((x, i) => (matchesWish(x, c.what) ? [alias.place(i)] : []));
+        const inPlan = d.days.some((day) => day.stops.some((s) => { const x = lookup.get(s.id); return !!x && "name" in x && matchesWish(x, c.what); }));
+        if (options.length && !inPlan) out.push(`Include ${p.name}'s must-do "${c.what}": use one of ${options.slice(0, 3).join(", ")}.`);
+      }
     const doAvailable = pool.places.filter((p) => placeKind(p) === "do").length;
     d.days.forEach((day, i) => {
       const full = i > 0 && i < d.days.length - 1;
@@ -292,7 +296,10 @@ export async function planTrip(
   for (let round = 0; round < 2; round++) {
     const problems = problemsOf(draft);
     if (!problems.length) break;
-    draft = await callTool<Draft>(SYSTEM, [{ role: "user", content: `${base}\n\nYour previous plan:\n${JSON.stringify(draft)}\n\nFix only these problems and resubmit the full plan:\n- ${problems.join("\n- ")}` }], SUBMIT);
+    const fixed = await callTool<Draft>(SYSTEM, [{ role: "user", content: `${base}\n\nYour previous plan:\n${JSON.stringify(draft)}\n\nFix only these problems and resubmit the full plan:\n- ${problems.join("\n- ")}` }], SUBMIT).catch(() => undefined);
+    // A broken fix keeps the last good plan; the checks below still drop anything that fails.
+    if (!Array.isArray(fixed?.days)) break;
+    draft = fixed;
   }
 
   // Build the days; drop anything that still fails, with a reason.

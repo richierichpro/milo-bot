@@ -47,3 +47,17 @@ export function capActivities(places: Place[], keep: number, mustKeep: (p: Place
   const drop = new Set(shops.slice(keep).map((p) => p.id));
   return places.filter((p) => !drop.has(p.id));
 }
+
+const FILLER = ["proper", "least", "some", "want", "with", "good", "nice", "really", "visit", "trip", "place", "places"];
+
+/** Does a place answer a wish? A named place ("Fort Aguada") by its name; an activity ("bungee jumping") by any key word in name or category. */
+export function matchesWish(p: Pick<Place, "name" | "category">, what: string): boolean {
+  const t = text(p);
+  const want = what.toLowerCase().trim();
+  if (t.includes(want)) return true;
+  const words = want.split(/\W+/).filter((w) => w.length > 3 && !FILLER.includes(w));
+  if (!words.length) return false;
+  // Every word in the name or category ("fort aguada" isn't any fort), or one whole word as the category ("Bungee Jumping Center").
+  const cat = (p.category ?? "").toLowerCase();
+  return words.every((w) => t.includes(w.slice(0, 5))) || words.some((w) => new RegExp(`\\b${w}\\b`).test(cat));
+}

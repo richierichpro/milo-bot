@@ -5,7 +5,7 @@ import { normalizeFlights, normalizeHotels, normalizePlaces } from "./normalize.
 import * as q from "./queries.js";
 import { serpSearch, type SerpParams } from "./serpapi.js";
 import { selectFlightOptions } from "./squad.js";
-import { capActivities } from "./themes.js";
+import { capActivities, matchesWish } from "./themes.js";
 import type { CallLogEntry, Constraint, Drop, Event, Flight, Hotel, Place, SquadMember } from "./types.js";
 
 export type Trip = { destination: string; startDate: string; endDate: string; interests: string[] };
@@ -104,8 +104,8 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
 
   const cap = hotelPriceCap(squad, trip);
   const diets = [...new Set(squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "food" && c.hard ? [c.diet] : []))))];
-  // Only must-dos that name a place ("Chapora fort") get their own search; "a proper beach day" doesn't.
-  const mustDos = squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "must_do" && /[A-Z]/.test(c.what) ? [c.what] : [])));
+  // Every must-do gets its own search: a named place ("Chapora fort") or an activity ("bungee jumping").
+  const mustDos = squad.flatMap((p) => p.constraints.flatMap((c) => (c.kind === "must_do" && !c.waived ? [c.what.trim()] : [])));
   // Sights first, from four angles (famous, popular, offbeat, historic): preferences are added to the trip, they aren't the whole trip.
   // "hidden gems in X" returns nothing on Maps and "adventure activities" is all water-sports shops, so neither is used.
   const sightQueries = [`top attractions in ${dest}`, `things to do in ${dest}`, `offbeat places to visit in ${dest}`, `historical places in ${dest}`];
@@ -115,7 +115,8 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
     `best restaurants in ${dest}`,
     ...interestQueries,
     ...diets.filter((d) => FOOD_QUERY[d]).map((d) => `${FOOD_QUERY[d]} in ${dest}`),
-    ...mustDos.map((m) => (m.toLowerCase().includes(dest.toLowerCase()) ? m : `${m} ${dest}`)),
+    // "bungee jumping in Goa" finds places; "best bungee jumping in Goa" found none.
+    ...mustDos.map((m) => (m.toLowerCase().includes(dest.toLowerCase()) ? m : `${m} in ${dest}`)),
   ];
 
   // No events search: Google mostly lists the next few weeks, rarely the trip dates. Activities come from Maps instead.
@@ -134,7 +135,7 @@ export async function gatherCandidates(trip: Trip, squad: SquadMember[], onProgr
     ),
   ]);
 
-  const mustMatch = (p: Place) => mustDos.some((m) => p.name.toLowerCase().includes(m.toLowerCase()));
+  const mustMatch = (p: Place) => mustDos.some((m) => matchesWish(p, m));
   const places = checkPlaces(capActivities([...new Map(placeLists.flat().map((p) => [p.id, p])).values()], KEEP.activityShops, mustMatch));
   const events = checkEvents([], trip);
 
