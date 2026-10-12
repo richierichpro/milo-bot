@@ -283,6 +283,34 @@ export function hotelCard(h: HotelData): string {
   return page(body, { title: "Hotel" });
 }
 
+// ---------- Hotel choice (one card, three stays) ----------
+
+export type HotelChoice = { number: number; tag: string; name: string; photo?: string; rating?: number; reviews?: number; stars?: number; perNight?: number; each: number };
+
+export function hotelChoiceCard(options: HotelChoice[], nights: number, rooms: number): string {
+  const rows = options
+    .map(
+      (h) => `
+<div class="card" style="display:flex;margin-top:18px">
+  ${h.photo ? `<img class="photo" src="${esc(h.photo)}" style="width:260px;min-height:210px">` : `<div class="photo" style="width:260px;min-height:210px"></div>`}
+  <div style="flex:1;min-width:0;padding:20px 26px">
+    <p style="font-size:22px;letter-spacing:.08em;text-transform:uppercase" class="muted"><b style="color:${colors.teal}">${h.number}</b> · ${esc(h.tag)}</p>
+    <p class="display" style="font-size:32px;line-height:1.15;margin-top:4px">${esc(h.name)}</p>
+    <p style="font-size:22px;margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">${h.stars ? `<span class="muted">${"★".repeat(h.stars)} hotel</span>` : ""}${ratingHtml(h.rating, h.reviews)}</p>
+    <p style="font-size:23px;margin-top:8px"><b>${h.perNight ? rupees(h.perNight) : "–"}</b><span class="muted"> /night</span> · <b>≈ ${rupees(h.each)}</b><span class="muted"> each, all in</span></p>
+  </div>
+</div>`,
+    )
+    .join("");
+  const body = `
+<p class="eyebrow">🏨 Pick your stay</p>
+<h1 class="display" style="font-size:46px;line-height:1.1;margin:6px 0 4px">Three stays that fit everyone</h1>
+<p class="muted" style="font-size:22px">${rooms} room${rooms > 1 ? "s" : ""} × ${nights} nights · "each" = flights + your share of the room</p>
+${rows}
+${proof("Google Hotels")}`;
+  return page(body, { title: "Pick your stay" });
+}
+
 // ---------- Day ----------
 
 export type DayStop = {

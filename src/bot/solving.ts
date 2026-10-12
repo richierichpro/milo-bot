@@ -12,8 +12,8 @@ import { actsFor, mention, type PlanningFlow } from "./flow.js";
 import { loadState, saveState, type ChatState } from "./state.js";
 import { newQuickVote, quickTick, type QuickVote } from "./votes.js";
 import { hotelOptions, hotelVoteText, hotelWinner, letter, type HotelVote } from "./hotelvote.js";
-import { hotelHtml } from "./render.js";
 import { renderCard } from "../cards/render.js";
+import { hotelChoiceCard } from "../cards/templates.js";
 
 // Solve within everyone's limits; when a hard limit breaks, ask only the person
 // affected, with 2–3 real options. Changes that touch everyone get a quick 👍/👎.
@@ -223,14 +223,17 @@ export class SolvingFlow {
     const chatId = s.chatId;
     const api = this.milo.bot.api;
     await api.sendChatAction(chatId, "upload_photo").catch(() => {});
+    // One card with all three stays; the vote buttons sit right under it.
     const hotels = options.map((o) => pool.hotels.find((h) => h.id === o.hotelId)!);
-    const pngs = [];
-    for (const h of hotels) pngs.push((await renderCard(hotelHtml(h, sol.nights, sol.rooms, undefined))).png);
-    const media = pngs.map((png, i) => InputMediaBuilder.photo(new InputFile(png, `stay-${i}.png`), { caption: `${letter(i)} · ${esc(hotels[i].name)}`, parse_mode: "HTML" }));
-    await this.milo.send(chatId, () => api.sendMediaGroup(chatId, media)).catch(() => {});
+    const card = hotelChoiceCard(
+      hotels.map((h, i) => ({ number: i + 1, tag: options[i].label, name: h.name, photo: h.thumbnail, rating: h.rating, reviews: h.reviews, stars: h.stars, perNight: h.pricePerNight, each: options[i].each })),
+      sol.nights,
+      sol.rooms,
+    );
+    const png = (await renderCard(card)).png;
     const kb = new InlineKeyboard();
     options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
-    const msg = await this.milo.say(chatId, hotelVoteText(v, pool.hotels, s.squad, sol.nights), kb);
+    const msg = await this.milo.send(chatId, () => api.sendPhoto(chatId, new InputFile(png, "stays.png"), { caption: hotelVoteText(v, pool.hotels, s.squad), parse_mode: "HTML", reply_markup: kb }));
     v.messageId = msg.message_id;
     await saveState(s);
   }
@@ -239,19 +242,18 @@ export class SolvingFlow {
     const v = sd(s).hotelVote;
     if (!v || v.done) return;
     const pool = await this.pool(s);
-    const nights = this.current(s, pool).nights;
     const win = hotelWinner(v, s.squad.length);
     if (win !== undefined) v.done = true;
     const kb = new InlineKeyboard();
     if (!v.done) v.options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
-    if (v.messageId) await this.milo.bot.api.editMessageText(s.chatId, v.messageId, hotelVoteText(v, pool.hotels, s.squad, nights), { parse_mode: "HTML", reply_markup: v.done ? undefined : kb, link_preview_options: { is_disabled: true } }).catch(() => {});
+    if (v.messageId) await this.milo.bot.api.editMessageCaption(s.chatId, v.messageId, { caption: hotelVoteText(v, pool.hotels, s.squad), parse_mode: "HTML", reply_markup: v.done ? undefined : kb }).catch(() => {});
     if (win === undefined) { await saveState(s); return; }
     const pick = v.options[win];
     const hotel = pool.hotels.find((h) => h.id === pick.hotelId);
     (sd(s).choice ??= { priceFirst: [] }).hotelId = pick.hotelId;
     s.decisions.push(`Stay: ${hotel?.name ?? "?"}`);
     await saveState(s);
-    await this.milo.say(s.chatId, `🏨 Going with <b>${esc(hotel?.name ?? "")}</b>! Building your days now…`);
+    await this.milo.say(s.chatId, `🏨 Going with <b>${esc((hotel?.name ?? "").replace(/[.\s]+$/, ""))}</b>! Building your days now…`);
     await this.check(s, pool);
   }
 

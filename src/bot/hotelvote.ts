@@ -10,8 +10,8 @@ import { mention } from "./flow.js";
 export type HotelOption = { hotelId: string; label: string; each: number };
 export type HotelVote = { id: string; options: HotelOption[]; votes: Record<string, number>; messageId?: number; done?: boolean };
 
-const LETTERS = ["A", "B", "C"];
-export const letter = (i: number) => LETTERS[i] ?? String(i + 1);
+/** Options are numbered 1, 2, 3 on the card and the buttons. */
+export const letter = (i: number) => String(i + 1);
 
 /** Up to three stays that break nobody's hard limits, each with what one person pays in all. */
 export function hotelOptions(pool: CandidatePool, trip: Trip, squad: SquadMember[], priceFirst: string[]): HotelOption[] {
@@ -35,22 +35,19 @@ export function hotelOptions(pool: CandidatePool, trip: Trip, squad: SquadMember
   return out.map((o) => ({ hotelId: o.h.id, label: o.label, each: o.each }));
 }
 
-export function hotelVoteText(v: HotelVote, hotels: Hotel[], squad: SquadMember[], nights: number): string {
+/** The caption under the one hotel card: a heading, who picked what, who's left. Fits Telegram's 1024-character caption. */
+export function hotelVoteText(v: HotelVote, hotels: Hotel[], squad: SquadMember[]): string {
   const rows = v.options.map((o, i) => {
     const h = hotels.find((x) => x.id === o.hotelId);
     const who = squad.filter((p) => v.votes[p.id] === i).map((p) => esc(p.name));
     const link = h?.link ?? h?.source.url;
-    return [
-      `<b>${letter(i)} · ${esc(h?.name ?? "?")}</b> <i>(${o.label})</i>`,
-      `   ${h?.rating ? `⭐ ${h.rating}${h.reviews ? ` (${h.reviews.toLocaleString("en-IN")})` : ""} · ` : ""}${h?.pricePerNight ? `${rupees(h.pricePerNight)}/night` : ""} · ≈ <b>${rupees(o.each)}</b> each for ${nights} nights${link ? ` · <a href="${esc(link)}">see it ↗</a>` : ""}`,
-      who.length ? `   🗳 ${who.join(", ")}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const name = esc(h?.name ?? "?");
+    return `<b>${letter(i)}</b> · ${link ? `<a href="${esc(link)}">${name}</a>` : name}${who.length ? ` · 🗳 ${who.join(", ")}` : ""}`;
   });
   const waiting = squad.filter((p) => v.votes[p.id] === undefined).map((p) => mention(p));
-  const head = v.done ? "🏨 <b>Stay picked</b>" : "🏨 <b>Where do we stay?</b> Tap your pick 👇\n<i>All three keep everyone within their limits. Each = flights + your share of the room.</i>";
-  return [head, "", rows.join("\n\n"), !v.done && waiting.length ? `\n⏳ ${waiting.join(", ")}` : ""].filter((x) => x !== "").join("\n");
+  const head = v.done ? "🏨 <b>Stay picked!</b>" : "🏨 <b>Time to pick your stay!</b>\nThree options that keep everyone within budget. Tap <b>1</b>, <b>2</b> or <b>3</b> 👇";
+  const text = [head, "", ...rows, !v.done && waiting.length ? `\n⏳ ${waiting.join(", ")}` : ""].filter((x) => x !== "").join("\n");
+  return text.length <= 1024 ? text : text.replace(/<a href="[^"]*">([^<]*)<\/a>/g, "$1").slice(0, 1024);
 }
 
 /** The vote is settled when everyone has voted, or one option has more than half the squad. Ties go to the cheaper stay. */
