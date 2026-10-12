@@ -15,7 +15,7 @@ export type Hooks = {
   /** Callback buttons owned by later steps (votes, Heard card…). Return true when handled. */
   onCallback: (ctx: Context, state: ChatState) => Promise<boolean>;
   /** A reply or mention asking for a change, once a plan exists. */
-  onEditRequest: (chatId: number, text: string) => Promise<void>;
+  onEditRequest: (chatId: number, heard: Heard) => void | Promise<void>;
   /** Typed answers the planning flow is waiting for (fixes, "Other"). Return true when handled. */
   onMessage: (state: ChatState, heard: Heard) => Promise<boolean>;
 };
@@ -157,8 +157,8 @@ export class Milo {
       const heard: Heard = { messageId: ctx.message.message_id, userId: from.id, name: from.first_name, text: ctx.message.text };
       this.knownChats.add(state.chatId);
       if (await this.hooks.onMessage(state, heard)) return;
-      const toMilo = ctx.message.reply_to_message?.from?.id === bot.botInfo.id || new RegExp(`@${bot.botInfo.username}\\b`, "i").test(heard.text);
-      if (state.stage === "done" && toMilo) return this.hooks.onEditRequest(state.chatId, heard.text);
+      // After the plan Milo keeps listening for changes ("add a spa on day 4").
+      if (state.stage === "done") return this.hooks.onEditRequest(state.chatId, heard);
       if (!state.listening) return;
       this.buffer(state.chatId, heard, state.data.setup ? SETUP_QUIET_MS : undefined);
     });

@@ -16,7 +16,7 @@ const people: Record<string, { id: number; name: string }> = Object.fromEntries(
   ["Aarav", "Meera", "Kabir", "Ishita"].map((n, i) => [n, { id: 1001 + i, name: n }]),
 );
 const tg = new FakeTelegram();
-const { bot, milo, flow } = createMilo("0:sim", { botInfo: FAKE_BOT, quietMs: 60_000 });
+const { bot, milo, flow, edits } = createMilo("0:sim", { botInfo: FAKE_BOT, quietMs: 60_000 });
 bot.api.config.use(tg.transformer());
 
 const strip = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, "\"");
@@ -125,6 +125,14 @@ for (let i = 0; i < 6; i++) {
   }
   break;
 }
+
+console.log("\n— After the plan, the chat asks for a change —");
+console.log("💬 Kabir: add a spa session on day 3 pls");
+await tg.say(bot, user("Kabir"), "add a spa session on day 3 pls");
+console.log("💬 Meera: haha yes");
+await tg.say(bot, user("Meera"), "haha yes");
+await edits.flush(tg.chatId);
+print();
 
 const state = await loadState(tg.chatId);
 console.log("\n— What Milo stored (constraints only, no message text) —");

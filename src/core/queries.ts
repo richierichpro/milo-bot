@@ -72,8 +72,9 @@ export function placeDetailsParams(placeId: string): SerpParams {
   return { engine: "google_maps", place_id: placeId, ...LOCALE };
 }
 
-export function mapsParams(q: string): SerpParams {
-  return { engine: "google_maps", type: "search", q, ...LOCALE };
+/** Optional `near` centres the search on an area ("@15.5,73.8,13z"). */
+export function mapsParams(q: string, near?: { lat: number; lng: number }): SerpParams {
+  return { engine: "google_maps", type: "search", q, ...(near ? { ll: `@${near.lat.toFixed(4)},${near.lng.toFixed(4)},13z` } : {}), ...LOCALE };
 }
 
 export function eventsParams(q: string): SerpParams {
