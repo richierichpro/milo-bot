@@ -80,6 +80,7 @@ Every friend group has a trip chat where the plan never happens, because everyon
 - google_maps: type=search, q, optional ll=@lat,lng,13z. Response local_results[]: title, place_id, gps_coordinates, rating, reviews, price, type, address, hours, operating_hours, thumbnail, description.
 - google_maps_directions: start_coords / end_coords ("lat,lng"), travel_mode (0 driving, 9 two-wheeler, 2 walking, 3 transit), time ("depart_at:<unix timestamp>"). Response directions[]: travel_mode, duration (s), distance (m), formatted_duration, formatted_distance. Use the first route for the requested mode.
 - google (web search) for events: q="events in Goa November 2026". Read events_results[]: title, date (object {start_date, when} or a plain string), address[], link, ticket_info[], venue, thumbnail. Don't use the deprecated google_events engine.
+  - 2026-10-12: Milo no longer searches events (the user asked). Google lists mostly the next few weeks; "events in Goa in November" did return November events if we ever bring it back. A "site:thrillophilia.com" web search ignores the site filter and returns blog listicles, so activities come from Google Maps ("things to do", "hidden gems", "adventure activities").
 
 ## Data rules
 - Money is INR: currency=INR, gl=in, hl=en. Format ₹12,345 (en-IN).

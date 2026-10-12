@@ -5,7 +5,7 @@ import { normalizeFlights, normalizeHotels, normalizePlaces } from "./normalize.
 import * as q from "./queries.js";
 import { serpSearch, type SerpParams } from "./serpapi.js";
 import { selectFlightOptions } from "./squad.js";
-import type { CallLogEntry, Constraint, Drop, Flight, Hotel, Place, SquadMember } from "./types.js";
+import type { CallLogEntry, Constraint, Drop, Event, Flight, Hotel, Place, SquadMember } from "./types.js";
 
 export type Trip = { destination: string; startDate: string; endDate: string; interests: string[] };
 
