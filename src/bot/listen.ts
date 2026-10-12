@@ -120,14 +120,17 @@ const SYSTEM = `You read a friend group's trip chat for Milo, a trip-planning bo
 - "no flights before 8am" means flight_time, direction any, not_before 08:00.
 - "15k max" / "budget 20k" are rupees per person for the whole trip.
 - Resolve weekdays and dates using today's date and any trip dates in the messages.
-- A place proposed as where to go goes in destinations_mentioned, not in constraints.
+- A place proposed as where to go goes in destinations_mentioned, not in constraints. Once the destination is decided, a place in it (a restaurant, beach, fort or club, e.g. "Bastian", "Aguada") is a must_do for whoever said it, never a destination.
 - Dates for the trip ("we go 20–23 Nov", or any answer to "when?") go in trip.start_date/end_date, never as a person's dates constraint. A dates constraint is only a personal availability limit that differs from the group ("I can only do 21–23").
 - A home city (people[].city) only comes from words like "from", "flying from", "based in", "I live in", "coming from". A place someone wants to visit is NEVER their home city, and someone's home city is NEVER a destination.
 - Use the sender's name for "I"/"me". Return empty arrays when nothing applies.`;
 
 export async function understand(messages: Heard[], state: ChatState, today: string, fixFor?: string): Promise<Understanding> {
   const squad = state.squad.map((p) => `${p.name}${p.city ? ` (${p.city})` : ""}`).join(", ") || "nobody yet";
-  const known = state.trip.startDate ? `Trip dates so far: ${state.trip.startDate} to ${state.trip.endDate}.` : "No trip dates yet.";
+  const known = [
+    state.trip.destination ? `Destination: ${state.trip.destination} (decided).` : "",
+    state.trip.startDate ? `Trip dates so far: ${state.trip.startDate} to ${state.trip.endDate}.` : "No trip dates yet.",
+  ].filter(Boolean).join(" ");
   const lines = messages.map((m) => `#${m.messageId} ${m.name}: ${m.text}`).join("\n");
   const fix = fixFor
     ? `\n\nThis message is ${fixFor}'s correction to their own limits. Put everything in it as constraints for ${fixFor} (a place or thing they want to do or eat is a must_do; something they won't do is a no_go). A new home city goes in people[] for ${fixFor}. Don't fill trip or destinations_mentioned.`
@@ -247,7 +250,21 @@ export function apply(state: ChatState, u: Understanding, messages: Heard[]): Ap
   }
   for (const p of state.squad) p.constraints = p.constraints.filter((c) => !(isDates(c) && c.start === state.trip.startDate && c.end === state.trip.endDate));
   for (const i of u.trip.interests ?? []) if (!state.trip.interests.includes(i)) state.trip.interests.push(i);
-  for (const d of u.destinations_mentioned) if (!state.mentioned.some((m) => m.toLowerCase() === d.toLowerCase())) state.mentioned.push(d);
+  // With the destination decided, other places named are things to do there: a must-do for the sender.
+  const dest = state.trip.destination?.toLowerCase();
+  const senders = [...new Set(messages.map((m) => m.name.toLowerCase()))];
+  for (const d of u.destinations_mentioned) {
+    if (dest && d.toLowerCase() !== dest) {
+      const who = senders.length === 1 ? state.squad.find((p) => p.name.toLowerCase() === senders[0]) : undefined;
+      if (who && !who.constraints.some((c) => c.kind === "must_do" && c.what.toLowerCase().includes(d.toLowerCase()))) {
+        const raw: RawConstraint = { person: who.name, kind: "must_do", hard: false, source_message_id: messages[0].messageId, what: d };
+        const c = toConstraint(who.id, raw);
+        if (c) { who.constraints.push(c); sourceIds.add(messages[0].messageId); }
+      }
+      continue;
+    }
+    if (!state.mentioned.some((m) => m.toLowerCase() === d.toLowerCase())) state.mentioned.push(d);
+  }
   sanitize(state);
   return { sourceIds: [...sourceIds], addedByOthers, intents: u.intents };
 }
