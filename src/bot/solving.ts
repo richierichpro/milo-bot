@@ -3,7 +3,7 @@ import { InlineKeyboard, type Context } from "grammy";
 import { esc } from "../cards/templates.js";
 import { gatherCandidates, type CandidatePool, type Trip } from "../core/gather.js";
 import { planTrip, type TripPlan } from "../core/planner.js";
-import { postPlan, sourcesMessages } from "./postplan.js";
+import { bookingList, postPlan, sourcesMessages } from "./postplan.js";
 import { formatINR } from "../core/money.js";
 import { budgetCompromises, problems, solve, type Compromise, type Solution } from "../core/solve.js";
 import type { SquadMember } from "../core/types.js";
@@ -159,6 +159,12 @@ export class SolvingFlow {
         return true;
       }
       await this.applyOption(s, member, option);
+      return true;
+    }
+    if (data === "booking") {
+      const plan = s.data.plan as TripPlan | undefined;
+      await ctx.answerCallbackQuery();
+      if (plan) await this.milo.say(s.chatId, bookingList(plan));
       return true;
     }
     if (data === "sources") {

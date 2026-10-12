@@ -1,7 +1,7 @@
 // Re-checks the latest plan Milo posted against the search results: PASS/FAIL per item.
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { daysText, flightsText, passText, sourcesMessages, TEXT_MAX } from "../src/bot/postplan.js";
+import { bookingList, daysText, flightsText, passText, sourcesMessages, TEXT_MAX } from "../src/bot/postplan.js";
 import type { ChatState } from "../src/bot/state.js";
 import { isOpenAt, MIN_REVIEWS } from "../src/core/checks.js";
 import { checkPerson, failingHard } from "../src/core/constraints.js";
@@ -70,7 +70,7 @@ const balanced = (html: string) => {
   }
   return stack.length === 0;
 };
-const texts = [flightsText(plan), daysText(plan), passText(plan, s.squad), ...sourcesMessages(plan)];
+const texts = [flightsText(plan), daysText(plan), passText(plan, s.squad), bookingList(plan), ...sourcesMessages(plan)];
 check(texts.every((x) => x.length <= TEXT_MAX && balanced(x)), `${texts.length} text messages ≤ ${TEXT_MAX} chars with valid HTML`);
 
 console.log(`\n${pass}/${pass + fail} items pass${fail ? ` · ${fail} FAIL` : ""}`);

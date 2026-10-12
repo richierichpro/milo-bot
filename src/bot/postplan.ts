@@ -87,6 +87,23 @@ export function passText(plan: TripPlan, squad: SquadMember[]): string {
     .join("\n");
 }
 
+/** One final message with everything to book: flights, the stay, every stop, and who pays what. */
+export function bookingList(plan: TripPlan): string {
+  const sol = plan.solution;
+  const leg = (f: NonNullable<(typeof sol.flights)[number]["out"]>) =>
+    `<code>${e(f.from)} ${f.departTime.slice(11)} → ${e(f.to)} ${f.arriveTime.slice(11)}</code> ${e(f.flightNumbers.join("/"))} · ${t.rupees(f.pricePerPerson)} · ${link(f.source.url, "Book ↗")}`;
+  const flights = sol.flights.map((p) => [`<b>${e(p.person)}</b>`, p.out ? `  out ${leg(p.out)}` : "  out: couldn't check", p.back ? `  back ${leg(p.back)}` : "  back: couldn't check"].join("\n"));
+  const h = sol.hotel;
+  const stay = h ? `<b>${e(h.name)}</b> · ${h.pricePerNight ? `${t.rupees(h.pricePerNight)}/night × ${sol.nights} nights × ${sol.rooms} room${sol.rooms > 1 ? "s" : ""}` : "price not listed"} · ${link(h.link ?? h.source.url, "Book ↗")}` : "No stay found";
+  const days = plan.days.map((d, i) => {
+    const stops = d.stops.map((s) => `  <code>${s.time}</code> ${link(s.kind === "place" ? s.item.mapsUrl : s.item.link, s.kind === "place" ? s.item.name : s.item.title)}`);
+    return `<b>Day ${i + 1} · ${e(dayLabel(d.date))}</b>\n${stops.join("\n") || "  free"}`;
+  });
+  const pays = sol.costs.map((c) => `${e(c.person)} ${t.rupees(c.total)}`).join(" · ");
+  const msg = [`🧾 <b>Your booking list</b>`, "", `✈️ <b>Flights</b>`, ...flights, "", `🏨 <b>Stay</b>`, stay, "", `📍 <b>Plan</b>`, `<blockquote expandable>${days.join("\n\n")}</blockquote>`, `💸 <b>Each pays</b> (flights + stay): ${pays}`].join("\n");
+  return msg.length <= TEXT_MAX ? msg : msg.replace(/<blockquote expandable>[\s\S]*<\/blockquote>/, "<i>Day-by-day links are in the message above.</i>");
+}
+
 /** Every search and every dropped item, for the "See sources" button. Split into ≤4096-char messages. */
 export function sourcesMessages(plan: TripPlan, now = Date.now()): string[] {
   const searches = plan.receipts.map((r) => `• ${e(engineLabel(r.engine))}: ${e(r.summary)} <i>(${r.source}, ${r.ms} ms)</i>`);
@@ -161,5 +178,6 @@ export async function postPlan(milo: Milo, s: ChatState, plan: TripPlan) {
     passes.push(await render(passHtml(p, i, sol.flights.find((f) => f.person === p.name), sol.costs.find((c) => c.person === p.name), checks, plan.trip, sol.hotel?.name)));
   }
   await album(passes, `🎫 <b>Boarding passes</b> · why this plan works for each of you`);
-  await milo.say(chatId, passText(plan, s.squad), new InlineKeyboard().text("See sources 🔎", "sources"));
+  await milo.say(chatId, passText(plan, s.squad), new InlineKeyboard().text("Booking list 🧾", "booking").text("See sources 🔎", "sources"));
+  await milo.say(chatId, bookingList(plan));
 }
