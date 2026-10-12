@@ -124,11 +124,14 @@ const SYSTEM = `You read a friend group's trip chat for Milo, a trip-planning bo
 - A home city (people[].city) only comes from words like "from", "flying from", "based in", "I live in", "coming from". A place someone wants to visit is NEVER their home city, and someone's home city is NEVER a destination.
 - Use the sender's name for "I"/"me". Return empty arrays when nothing applies.`;
 
-export async function understand(messages: Heard[], state: ChatState, today: string): Promise<Understanding> {
+export async function understand(messages: Heard[], state: ChatState, today: string, fixFor?: string): Promise<Understanding> {
   const squad = state.squad.map((p) => `${p.name}${p.city ? ` (${p.city})` : ""}`).join(", ") || "nobody yet";
   const known = state.trip.startDate ? `Trip dates so far: ${state.trip.startDate} to ${state.trip.endDate}.` : "No trip dates yet.";
   const lines = messages.map((m) => `#${m.messageId} ${m.name}: ${m.text}`).join("\n");
-  return callTool<Understanding>(SYSTEM, [{ role: "user", content: `Today is ${today}. Squad so far: ${squad}. ${known}\n\nMessages:\n${lines}` }], UNDERSTAND, {
+  const fix = fixFor
+    ? `\n\nThis message is ${fixFor}'s correction to their own limits. Put everything in it as constraints for ${fixFor} (a place or thing they want to do or eat is a must_do; something they won't do is a no_go). A new home city goes in people[] for ${fixFor}. Don't fill trip or destinations_mentioned.`
+    : "";
+  return callTool<Understanding>(SYSTEM, [{ role: "user", content: `Today is ${today}. Squad so far: ${squad}. ${known}\n\nMessages:\n${lines}${fix}` }], UNDERSTAND, {
     fast: true,
     maxTokens: 2000,
     strict: false,

@@ -176,10 +176,22 @@ export class PlanningFlow {
       // Read the fix as if this person said it; only their own row changes.
       const msg = { ...heard, name: who.name };
       const others = s.squad.filter((p) => p.id !== who.id);
-      const u = await understand([msg], s, today());
+      const u = await understand([msg], s, today(), who.name);
+      const city = u.people.find((p) => p.action !== "remove" && p.name.toLowerCase() === who.name.toLowerCase())?.city;
+      const before = JSON.stringify([who.city, who.constraints]);
       u.constraints = u.constraints.filter((c) => c.person.toLowerCase() === who.name.toLowerCase());
       u.people = [];
+      u.trip = {};
+      u.destinations_mentioned = [];
+      u.intents = [];
       apply(s, u, [msg]);
+      if (city) who.city = city;
+      if (JSON.stringify([who.city, who.constraints]) === before) {
+        f.fixing = who.id;
+        await saveState(s);
+        await this.milo.say(s.chatId, `🤔 ${mention(who)}, I didn't catch a change. Try like “budget 20k”, “I'm veg” or “flying from Pune”.`);
+        return true;
+      }
       s.squad = [...others, s.squad.find((p) => p.id === who.id)!].sort((a, b) => s.squad.indexOf(a) - s.squad.indexOf(b));
       await saveState(s);
       await this.milo.bot.api.setMessageReaction(s.chatId, heard.messageId, [{ type: "emoji", emoji: "👀" }]).catch(() => {});
