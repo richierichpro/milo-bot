@@ -7,7 +7,7 @@ import { findDestinations, type DestinationShortlist } from "../core/squad.js";
 import type { CallLogEntry, SquadMember } from "../core/types.js";
 import type { Milo } from "./conversation.js";
 import { apply, understand, type Heard } from "./listen.js";
-import { heardHtml, shortlistHtml } from "./render.js";
+import { dateRange, heardHtml, shortlistHtml } from "./render.js";
 import { loadState, saveState, type ChatState } from "./state.js";
 import { buttonLabel, cast, newVote, tick, veto, voterNames, type Vote, type VoteEvent } from "./votes.js";
 
@@ -17,7 +17,8 @@ import { buttonLabel, cast, newVote, tick, veto, voterNames, type Vote, type Vot
 const CITY_BUTTONS = ["Hyderabad", "Bengaluru", "Delhi", "Mumbai", "Pune", "Chennai", "Kolkata"];
 const today = () => process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 10);
 
-type Question = { kind: "city" | "dates" | "budget" | "food"; memberId: string };
+/** city/dates go to one person; budget/food go to the whole group at once ("all"), each tap counted for whoever tapped. */
+type Question = { kind: "city" | "dates" | "budget" | "food"; memberId: string; messageId?: number; pending?: string[]; answers?: Record<string, string> };
 type FlowData = { fixing?: string; question?: Question; awaitingText?: Question; asked?: string[]; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
 
 const flow = (s: ChatState) => s.data as FlowData;
@@ -118,6 +119,7 @@ export class PlanningFlow {
       return true;
     }
 
+    if (data.startsWith("q:all:")) return this.groupAnswer(ctx, s, data.slice(6));
     if (data.startsWith("q:")) {
       const [, memberId, value] = data.split(":");
       const p = s.squad.find((x) => x.id === memberId);
@@ -201,10 +203,10 @@ export class PlanningFlow {
     const noCity = s.squad.find((p) => !p.city || !resolveAirport(p.city));
     if (noCity) return { kind: "city", memberId: noCity.id };
     if (!s.trip.startDate || !s.trip.endDate) return { kind: "dates", memberId: s.squad[0].id };
-    const noBudget = s.squad.find((p) => !asked.has(`budget:${p.id}`) && !p.constraints.some((c) => c.kind === "budget"));
-    if (noBudget) return { kind: "budget", memberId: noBudget.id };
-    const noFood = s.squad.find((p) => !asked.has(`food:${p.id}`) && !p.constraints.some((c) => c.kind === "food"));
-    if (noFood) return { kind: "food", memberId: noFood.id };
+    const noBudget = s.squad.filter((p) => !asked.has(`budget:${p.id}`) && !p.constraints.some((c) => c.kind === "budget"));
+    if (noBudget.length) return { kind: "budget", memberId: "all", pending: noBudget.map((p) => p.id), answers: {} };
+    const noFood = s.squad.filter((p) => !asked.has(`food:${p.id}`) && !p.constraints.some((c) => c.kind === "food"));
+    if (noFood.length) return { kind: "food", memberId: "all", pending: noFood.map((p) => p.id), answers: {} };
     return undefined;
   }
 
@@ -221,6 +223,7 @@ export class PlanningFlow {
       }
       return this.destinationVote(s);
     }
+    if (q.memberId === "all") return this.ask(s, q, this.groupText(s, q), this.groupKeyboard(q));
     const p = s.squad.find((x) => x.id === q.memberId)!;
     if (q.kind === "city") {
       const kb = new InlineKeyboard();
@@ -230,18 +233,94 @@ export class PlanningFlow {
       });
       kb.text("Other ✍️", `q:${p.id}:other`);
       const hint = p.city && !resolveAirport(p.city) ? ` I don't know an airport for “${t.esc(p.city)}”${suggestCities(p.city).length ? `: did you mean ${suggestCities(p.city).map((x) => `<b>${t.esc(x)}</b>`).join(" or ")}?` : "."}` : "";
-      return void (await this.milo.say(s.chatId, `🛫 ${mention(p)}, which city are you flying from?${hint}`, kb));
-    }
-    if (q.kind === "budget") {
-      const kb = new InlineKeyboard().text("₹10k", `q:${p.id}:10000`).text("₹15k", `q:${p.id}:15000`).text("₹20k", `q:${p.id}:20000`).row().text("No limit", `q:${p.id}:none`).text("Other ✍️", `q:${p.id}:other`);
-      return void (await this.milo.say(s.chatId, `💸 ${mention(p)}, what's your max for the whole trip (flights + stay)?`, kb));
-    }
-    if (q.kind === "food") {
-      const kb = new InlineKeyboard().text("Veg", `q:${p.id}:veg`).text("Non-veg", `q:${p.id}:none`).text("Jain", `q:${p.id}:jain`).row().text("No preference", `q:${p.id}:none`);
-      return void (await this.milo.say(s.chatId, `🍽 ${mention(p)}, any food needs?`, kb));
+      return this.ask(s, q, `🛫 ${mention(p)}, which city are you flying from?${hint}`, kb);
     }
     const kb = new InlineKeyboard().text("This weekend", `q:${p.id}:this_weekend`).text("Next weekend", `q:${p.id}:next_weekend`).row().text("Pick dates ✍️", `q:${p.id}:other`);
-    await this.milo.say(s.chatId, `📅 ${mention(p)}, which dates are we going?`, kb);
+    await this.ask(s, q, `📅 ${mention(p)}, which dates are we going?`, kb);
+  }
+
+  private async ask(s: ChatState, q: Question, html: string, kb: InlineKeyboard) {
+    const msg = await this.milo.say(s.chatId, html, kb);
+    q.messageId = msg.message_id;
+    await saveState(s);
+  }
+
+  /** The question turns into its answer, so everyone sees what was picked. */
+  private async showAnswer(s: ChatState, q: Question, text: string) {
+    if (!q.messageId) return;
+    await this.milo.bot.api.editMessageText(s.chatId, q.messageId, text, { parse_mode: "HTML", reply_markup: new InlineKeyboard() }).catch(() => {});
+  }
+
+  // ---------- Group questions: everyone taps their own answer ----------
+
+  private groupKeyboard(q: Question): InlineKeyboard {
+    return q.kind === "budget"
+      ? new InlineKeyboard().text("₹10k", "q:all:10000").text("₹15k", "q:all:15000").text("₹20k", "q:all:20000").row().text("No limit", "q:all:none").text("Other ✍️", "q:all:other")
+      : new InlineKeyboard().text("Veg", "q:all:veg").text("Non-veg", "q:all:none").text("Jain", "q:all:jain").row().text("No preference", "q:all:none");
+  }
+
+  private groupText(s: ChatState, q: Question): string {
+    const head = q.kind === "budget" ? "💸 <b>What's your max for the whole trip?</b> Tap yours 👇" : "🍽 <b>Any food needs?</b> Tap yours 👇";
+    const done = Object.entries(q.answers ?? {}).map(([id, label]) => `${t.esc(s.squad.find((p) => p.id === id)?.name ?? "?")}: ${label}`);
+    const waiting = (q.pending ?? []).map((id) => s.squad.find((p) => p.id === id)).filter(Boolean).map((p) => mention(p!));
+    return [head, done.length ? `✅ ${done.join(" · ")}` : "", waiting.length ? `⏳ ${waiting.join(", ")}` : ""].filter(Boolean).join("\n");
+  }
+
+  /** A tap counts for whoever tapped; if they've answered, it counts for a friend they added. */
+  private async groupAnswer(ctx: Context, s: ChatState, value: string): Promise<boolean> {
+    const f = flow(s);
+    const q = f.question;
+    if (!q || q.memberId !== "all") {
+      await ctx.answerCallbackQuery({ text: "That question's done." });
+      return true;
+    }
+    const tg = ctx.from!.id;
+    const mine = (q.pending ?? []).map((id) => s.squad.find((p) => p.id === id)!).filter((p) => p && actsFor(p, tg));
+    const p = mine.find((x) => x.telegramUserId === tg) ?? mine[0];
+    if (!p) {
+      await ctx.answerCallbackQuery({ text: s.squad.some((x) => actsFor(x, tg)) ? "You've answered 👍" : "Say you're in first 🙂" });
+      return true;
+    }
+    if (value === "other") {
+      await ctx.answerCallbackQuery();
+      f.awaitingText = { ...q, memberId: p.id };
+      await saveState(s);
+      await this.milo.say(s.chatId, `${mention(p)}, type it here 👇`);
+      return true;
+    }
+    const next = mine.find((x) => x.id !== p.id);
+    await ctx.answerCallbackQuery({ text: `Got it${p.telegramUserId === tg ? "" : ` for ${p.name}`}${next ? `. Tap again for ${next.name}` : ""}` });
+    await this.recordPick(s, q, p, value);
+    return true;
+  }
+
+  private async recordPick(s: ChatState, q: Question, p: SquadMember, value: string) {
+    const f = flow(s);
+    const group = f.question?.memberId === "all" ? f.question : q;
+    (f.asked ??= []).push(`${q.kind}:${p.id}`);
+    const id = `${p.id}-${q.kind}-asked`;
+    let label: string;
+    if (q.kind === "budget") {
+      const m = value.toLowerCase().replace(/[,₹\s]/g, "").match(/^(\d+(?:\.\d+)?)(k)?$/);
+      const max = m ? Math.round(Number(m[1]) * (m[2] || Number(m[1]) < 1000 ? 1000 : 1)) : undefined;
+      if (max) p.constraints.push({ id, hard: true, kind: "budget", max });
+      label = max ? `max ${t.rupees(max)}` : "no limit";
+    } else {
+      if (value === "veg" || value === "jain") p.constraints.push({ id, hard: true, kind: "food", diet: value });
+      label = value === "veg" ? "veg 🌱" : value === "jain" ? "Jain" : "no preference";
+    }
+    group.answers = { ...(group.answers ?? {}), [p.id]: label };
+    group.pending = (group.pending ?? []).filter((x) => x !== p.id);
+    await saveState(s);
+    if (!group.messageId) return;
+    const finished = !group.pending.length;
+    await this.milo.bot.api
+      .editMessageText(s.chatId, group.messageId, this.groupText(s, group), { parse_mode: "HTML", reply_markup: finished ? new InlineKeyboard() : this.groupKeyboard(group) })
+      .catch(() => {});
+    if (finished) {
+      await this.milo.updateTripCard(s);
+      await this.askNext(s);
+    }
   }
 
   private async answer(s: ChatState, q: Question, value: string) {
@@ -254,21 +333,18 @@ export class PlanningFlow {
       }
       p.city = value.replace(/^./, (c) => c.toUpperCase());
       s.decisions.push(`${p.name} flies from ${p.city}`);
+      await this.showAnswer(s, q, `🛫 ${mention(p)}: flying from <b>${t.esc(p.city)}</b> ✅`);
     } else if (q.kind === "budget" || q.kind === "food") {
-      (flow(s).asked ??= []).push(`${q.kind}:${p.id}`);
-      const id = `${p.id}-${q.kind}-asked`;
-      if (q.kind === "budget") {
-        const m = value.toLowerCase().replace(/[,₹\s]/g, "").match(/^(\d+(?:\.\d+)?)(k)?$/);
-        const max = m ? Math.round(Number(m[1]) * (m[2] || Number(m[1]) < 1000 ? 1000 : 1)) : undefined;
-        if (max) p.constraints.push({ id, hard: true, kind: "budget", max });
-      } else if (value === "veg" || value === "jain") p.constraints.push({ id, hard: true, kind: "food", diet: value });
-    } else {
+      // A typed "Other" answer to the group question.
+      return this.recordPick(s, q, p, value);    } else {
+      const shown = () => (s.trip.startDate && s.trip.endDate ? `📅 ${mention(p)}: <b>${t.esc(dateRange(s.trip.startDate, s.trip.endDate))}</b> ✅` : "");
       const range = weekend(value);
       if (range) [s.trip.startDate, s.trip.endDate] = range;
       else {
         const u = await understand([{ messageId: 0, userId: p.telegramUserId ?? 0, name: p.name, text: `our dates: ${value}` }], s, today());
         if (u.trip.start_date && u.trip.end_date) [s.trip.startDate, s.trip.endDate] = [u.trip.start_date, u.trip.end_date];
       }
+      if (shown()) await this.showAnswer(s, q, shown());
     }
     await saveState(s);
     await this.milo.updateTripCard(s);

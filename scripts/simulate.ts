@@ -76,8 +76,14 @@ await tapButton("Aarav", (b) => b.data === "heard_ok");
 const homes: Record<string, string> = { Aarav: "Hyderabad", Meera: "Bengaluru", Kabir: "Delhi", Ishita: "Pune" };
 for (let i = 0; i < 16; i++) {
   const st = await loadState(tg.chatId);
-  const q = (st.data as { question?: { memberId: string; kind: string } }).question;
+  const q = (st.data as { question?: { memberId: string; kind: string; pending?: string[] } }).question;
   if (!q) break;
+  if (q.memberId === "all") {
+    // One group question: each friend taps their own answer.
+    const who = st.squad.find((p) => p.id === q.pending![0])!.name;
+    await tapButton(who, (b) => b.data === "q:all:none");
+    continue;
+  }
   const who = st.squad.find((p) => p.id === q.memberId)!.name;
   // Cities from the demo squad; nobody else has a budget cap or food needs.
   const answer = q.kind === "city" ? homes[who] : "none";

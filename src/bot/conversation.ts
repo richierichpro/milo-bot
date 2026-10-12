@@ -3,6 +3,7 @@ import { Bot, GrammyError, InlineKeyboard, type Context } from "grammy";
 import { esc } from "../cards/templates.js";
 import { apply, BATCH_MAX, BATCH_QUIET_MS, enoughToPlan, understand, type Heard } from "./listen.js";
 import { loadState, resetState, saveState, type ChatState } from "./state.js";
+import { chipLabel } from "./render.js";
 import { tripCardKeyboard, tripCardText } from "./tripcard.js";
 
 // Group chat behaviour: intro, listening, squad adds with Undo, the Trip card,
@@ -305,6 +306,7 @@ export class Milo {
     const msgs = b.msgs.splice(0);
     const state = await loadState(chatId);
     const before = new Map(state.squad.map((p) => [p.id, p.city]));
+    const knownLimits = new Set(state.squad.flatMap((p) => p.constraints.map((c) => c.id)));
     const datesBefore = state.trip.startDate;
     const placesBefore = state.mentioned.length;
     let applied;
@@ -325,11 +327,18 @@ export class Milo {
     const cityNow = state.squad.filter((p) => before.has(p.id) && !before.get(p.id) && p.city);
     const ack = [...fresh, ...cityNow].map((p) => `<b>${esc(p.name)}</b>${p.city ? ` (${esc(p.city)})` : ""}`);
     if (ack.length) await this.say(chatId, `👍 ${ack.join(", ")}`);
+
     for (const { member } of applied.addedByOthers) {
       const token = randomBytes(4).toString("hex");
       state.undo[token] = { memberId: member.id, addedBy: member.proxyFor ?? "" };
       await this.say(chatId, `➕ <b>${esc(member.name)}</b>${member.city ? ` (${esc(member.city)})` : ""} added`, new InlineKeyboard().text("Undo", `undo:${token}`));
     }
+    // What Milo understood, so everyone can see it (and fix it later on the Heard card).
+    const noted = state.squad
+      .map((p) => ({ p, fresh: p.constraints.filter((c) => !knownLimits.has(c.id)) }))
+      .filter((x) => x.fresh.length)
+      .map(({ p, fresh }) => `<b>${esc(p.name)}</b>: ${fresh.map((c) => `${c.hard ? "🔒 " : ""}${esc(chipLabel(c))}`).join(", ")}`);
+    if (noted.length) await this.say(chatId, `📝 Noted · ${noted.join(" · ")}`);
     await saveState(state);
     await this.updateTripCard(state);
 
