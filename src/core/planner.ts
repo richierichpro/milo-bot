@@ -237,7 +237,8 @@ export async function planTrip(
 
   opts.onProgress?.("Asking Claude to arrange the days…");
   const base = prompt(pool, trip, sol, squad, maxIn || undefined, maxOut || undefined);
-  let draft = await callTool<Draft>(SYSTEM, [{ role: "user", content: base }], SUBMIT);
+  let draft = await callTool<Draft>(SYSTEM, [{ role: "user", content: base }], SUBMIT, { maxTokens: 16_000 });
+  if (!Array.isArray(draft?.days)) throw new Error("The plan came back without days.");
 
   // Grounding, hours and food checks; one chance to fix.
   opts.onProgress?.("Checking every item against search results…");
@@ -296,7 +297,7 @@ export async function planTrip(
   for (let round = 0; round < 2; round++) {
     const problems = problemsOf(draft);
     if (!problems.length) break;
-    const fixed = await callTool<Draft>(SYSTEM, [{ role: "user", content: `${base}\n\nYour previous plan:\n${JSON.stringify(draft)}\n\nFix only these problems and resubmit the full plan:\n- ${problems.join("\n- ")}` }], SUBMIT).catch(() => undefined);
+    const fixed = await callTool<Draft>(SYSTEM, [{ role: "user", content: `${base}\n\nYour previous plan:\n${JSON.stringify(draft)}\n\nFix only these problems and resubmit the full plan:\n- ${problems.join("\n- ")}` }], SUBMIT, { maxTokens: 16_000 }).catch(() => undefined);
     // A broken fix keeps the last good plan; the checks below still drop anything that fails.
     if (!Array.isArray(fixed?.days)) break;
     draft = fixed;

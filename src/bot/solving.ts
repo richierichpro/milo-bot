@@ -46,9 +46,18 @@ export class SolvingFlow {
     await this.milo.bot.api.sendChatAction(chatId, "typing").catch(() => {});
     const status = await this.milo.say(chatId, `🗺 Planning your trip…\n${bar(1, 5)}`);
     let step = 1;
-    const plan = await planTrip(pool, tripOf(s), sol, s.squad, {
-      onProgress: (text) => void this.milo.bot.api.editMessageText(chatId, status.message_id, `${friendly(text)}\n${bar(++step, 5)}`).catch(() => {}),
-    });
+    let plan: TripPlan;
+    try {
+      plan = await planTrip(pool, tripOf(s), sol, s.squad, {
+        onProgress: (text) => void this.milo.bot.api.editMessageText(chatId, status.message_id, `${friendly(text)}\n${bar(++step, 5)}`).catch(() => {}),
+      });
+    } catch (err) {
+      // Never go silent: say so, and let the group retry (searches are cached, so a retry is free).
+      console.error(`planning failed in ${chatId}:`, (err as Error).message);
+      await this.milo.bot.api.deleteMessage(chatId, status.message_id).catch(() => {});
+      await this.milo.say(chatId, "😕 I hit a snag building your days. Tap to try again 👇", new InlineKeyboard().text("Try again 🔁", "retry_plan"));
+      return;
+    }
     await this.milo.bot.api.deleteMessage(chatId, status.message_id).catch(() => {});
     s.data.plan = plan;
     s.stage = "done";
@@ -177,6 +186,14 @@ export class SolvingFlow {
       await ctx.answerCallbackQuery({ text: `${letter(Number(idx))} for ${voter.name} 👍` });
       await saveState(s);
       await this.settleHotelVote(s);
+      return true;
+    }
+    if (data === "retry_plan") {
+      if (s.stage !== "planning") { await ctx.answerCallbackQuery({ text: "Already done 👍" }); return true; }
+      await ctx.answerCallbackQuery({ text: "On it!" });
+      await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+      const pool = await this.pool(s);
+      await this.next(s.chatId, this.current(s, pool), pool);
       return true;
     }
     if (data === "booking") {

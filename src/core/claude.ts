@@ -73,7 +73,8 @@ async function create(params: CreateParams): Promise<Anthropic.Message> {
     // Tests run with CLAUDE_OFFLINE=true: a cache miss fails instead of spending tokens.
     if (process.env.CLAUDE_OFFLINE === "true") throw new Error("Offline and not cached: Claude request");
     res = await getClient().messages.create(params);
-    if (res.stop_reason !== "refusal") await writeJson(file, res);
+    // A cut-off answer (max_tokens) is never reused: the retry must reach the API.
+    if (res.stop_reason !== "refusal" && res.stop_reason !== "max_tokens") await writeJson(file, res);
   }
   if (process.env.RECORD_DEMO === "true") await writeJson(demoFile, res);
   return res;
@@ -85,10 +86,11 @@ async function create(params: CreateParams): Promise<Anthropic.Message> {
  * schema, tell Claude to call the tool, and nudge once if it answers in text.
  */
 export async function callTool<T>(system: string, messages: Anthropic.MessageParam[], tool: ToolDef, opts: CallOptions = {}): Promise<T> {
+  let maxTokens = opts.maxTokens ?? 8000;
   const request = (msgs: Anthropic.MessageParam[]) =>
     create({
       model: opts.fast ? fastModel() : model(),
-      max_tokens: opts.maxTokens ?? 8000,
+      max_tokens: maxTokens,
       // Stable instructions first and marked cacheable, so repeat calls pay ~10% for them.
       system: [{ type: "text", text: `${system}\n\nAnswer only by calling the ${tool.name} tool.`, cache_control: { type: "ephemeral" } }],
       messages: msgs,
@@ -98,7 +100,13 @@ export async function callTool<T>(system: string, messages: Anthropic.MessagePar
     });
 
   let res = await request(messages);
+  // Cut off mid-answer: ask again once with twice the room.
+  if (res.stop_reason === "max_tokens") {
+    maxTokens = Math.min(maxTokens * 2, 32_000);
+    res = await request(messages);
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
+    if (res.stop_reason === "max_tokens") throw new Error("Claude's answer was cut off.");
     if (res.stop_reason === "refusal") throw new Error("Claude declined this request.");
     const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === tool.name);
     if (call) return call.input as T;
