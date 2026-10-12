@@ -77,6 +77,8 @@ export class Milo {
     const text = tripCardText(state);
     const kb = tripCardKeyboard(state, enoughToPlan(state));
     const card = state.tripCard;
+    // Nothing worth pinning while Milo is only listening: the card first appears once planning starts.
+    if (!card && (state.stage === "intro" || state.stage === "listening")) return;
     if (card) {
       try {
         await this.send(state.chatId, () => this.bot.api.editMessageText(state.chatId, card.messageId, text, { parse_mode: "HTML", reply_markup: kb }));
