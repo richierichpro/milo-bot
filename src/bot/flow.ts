@@ -321,7 +321,7 @@ export class PlanningFlow {
     // Budgets are typed ("30k", "no limit"); food is a tap.
     return q.kind === "budget"
       ? undefined
-      : new InlineKeyboard().text("Veg", "q:all:veg").text("Non-veg", "q:all:none").text("Jain", "q:all:jain").row().text("No preference", "q:all:none");
+      : new InlineKeyboard().text("Veg", "q:all:veg").text("Non-veg", "q:all:nonveg").text("Jain", "q:all:jain").row().text("No preference", "q:all:none");
   }
 
   private groupText(s: ChatState, q: Question): string {
@@ -371,9 +371,11 @@ export class PlanningFlow {
       const max = m ? Math.round(Number(m[1]) * (m[2] || Number(m[1]) < 1000 ? 1000 : 1)) : undefined;
       if (max) p.constraints.push({ id, hard: true, kind: "budget", max });
       label = max ? `max ${t.rupees(max)}` : "no limit";
+      if (!max) (p.noted ??= {}).budget = "no limit";
     } else {
       if (value === "veg" || value === "jain") p.constraints.push({ id, hard: true, kind: "food", diet: value });
-      label = value === "veg" ? "veg 🌱" : value === "jain" ? "Jain" : "no preference";
+      label = value === "veg" ? "veg 🌱" : value === "jain" ? "Jain" : value === "nonveg" ? "non-veg 🍗" : "no preference";
+      if (value !== "veg" && value !== "jain") (p.noted ??= {}).food = value === "nonveg" ? "non-veg" : "any food";
     }
     group.answers = { ...(group.answers ?? {}), [p.id]: label };
     group.pending = (group.pending ?? []).filter((x) => x !== p.id);

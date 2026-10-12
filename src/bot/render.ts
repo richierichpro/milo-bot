@@ -62,8 +62,17 @@ export function chipLabel(c: Constraint): string {
   }
 }
 
+/** Every answer shows on the squad card, including the ones that aren't limits ("no limit", "non-veg"). */
 export function heardHtml(squad: SquadMember[]): string {
-  return t.heardCard(squad.map((p) => ({ name: p.name, city: p.city, chips: p.constraints.filter((c) => !c.waived).map((c) => ({ label: chipLabel(c), hard: c.hard })) })));
+  return t.heardCard(
+    squad.map((p) => {
+      const chips = p.constraints.filter((c) => !c.waived).map((c) => ({ label: chipLabel(c), hard: c.hard }));
+      const has = (kind: string) => p.constraints.some((c) => c.kind === kind && !c.waived);
+      if (p.noted?.budget && !has("budget")) chips.push({ label: `💸 ${p.noted.budget}`, hard: false });
+      if (p.noted?.food && !has("food")) chips.push({ label: `🍽 ${p.noted.food}`, hard: false });
+      return { name: p.name, city: p.city, chips };
+    }),
+  );
 }
 
 export function shortlistHtml(s: DestinationShortlist): string {

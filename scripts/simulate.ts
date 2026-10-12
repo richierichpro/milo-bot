@@ -82,7 +82,7 @@ for (let i = 0; i < 16; i++) {
       console.log(`💬 ${who}: no limit`);
       await tg.say(bot, user(who), "no limit");
       print();
-    } else await tapButton(who, (b) => b.data === "q:all:none");
+    } else await tapButton(who, (b) => b.data === (who === "Kabir" ? "q:all:nonveg" : "q:all:none"));
     continue;
   }
   const who = st.squad.find((p) => p.id === q.memberId)!.name;

@@ -196,6 +196,8 @@ export type SquadMember = {
   /** Who votes for them when they aren't on Telegram. */
   proxyFor?: string;
   constraints: Constraint[];
+  /** Answers that aren't limits ("no limit", "non-veg", "no preference"), shown on the squad card. */
+  noted?: { budget?: string; food?: string };
 };
 
 /** One dropped candidate and why (shown under "See sources"). */
