@@ -126,8 +126,10 @@ export class EditFlow {
       console.error(`edit search failed in ${chatId}:`, (err as Error).message);
     }
     const inPlan = new Set(plan.days.flatMap((d) => d.stops.map((x) => x.item.id)));
-    const near = found.filter((p) => !inPlan.has(p.id) && !SKETCHY.test(p.name) && (!centre || haversineKm(centre, p) <= NEAR_KM));
-    const score = (p: Place) => (p.rating ?? 0) * Math.log10((p.reviews ?? 0) + 10);
+    // A place asked for by name ("Basilica of Bom Jesus") goes in wherever it is; a kind of thing ("spa") is found near the day's area.
+    const named = (p: Place) => matchesWish(p, e.what);
+    const near = found.filter((p) => !inPlan.has(p.id) && !SKETCHY.test(p.name) && (named(p) || !centre || haversineKm(centre, p) <= NEAR_KM));
+    const score = (p: Place) => (named(p) ? 100 : 0) + (p.rating ?? 0) * Math.log10((p.reviews ?? 0) + 10);
     const taken = () => day.stops.map((x) => toMin(x.time));
     const freeSlot = (p: Place) => SLOTS.map(hm).find((h) => taken().every((m) => Math.abs(m - toMin(h)) >= GAP_MIN) && isOpenAt(p, day.date, h) !== false);
     // A packed day: swap out its lowest-rated sight (never a meal, a night out or someone's must-do).
