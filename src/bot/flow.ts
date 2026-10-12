@@ -19,7 +19,7 @@ const today = () => process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 
 
 /** city/dates go to one person; budget/food go to the whole group at once ("all"), each tap counted for whoever tapped. */
 type Question = { kind: "city" | "dates" | "budget" | "food"; memberId: string; messageId?: number; pending?: string[]; answers?: Record<string, string> };
-type FlowData = { fixing?: string; question?: Question; awaitingText?: Question; asked?: string[]; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
+type FlowData = { heardDone?: boolean; fixing?: string; question?: Question; awaitingText?: Question; asked?: string[]; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
 
 const flow = (s: ChatState) => s.data as FlowData;
 
@@ -72,13 +72,13 @@ export class PlanningFlow {
 
   // ---------- Heard ----------
 
+  /** Questions first (cities, dates, budget, food); the Heard card comes last as the summary of everyone. */
   async start(chatId: number) {
     const s = await loadState(chatId);
-    s.stage = "heard";
-    s.pending = ["Everyone checks “what I heard”"];
+    s.stage = "questions";
+    s.pending = [];
     await saveState(s);
-    await this.milo.updateTripCard(s);
-    await this.sendHeard(s);
+    await this.askNext(s);
   }
 
   private async sendHeard(s: ChatState) {
@@ -87,7 +87,7 @@ export class PlanningFlow {
       kb.text(`✏️ Fix ${p.name}'s`, `fix:${p.id}`);
       if (i % 2) kb.row();
     });
-    await this.sendCard(s.chatId, heardHtml(s.squad), "📝 <b>Here's what I heard</b>\nAll good? 🔒 = I'll never break it", kb);
+    await this.sendCard(s.chatId, heardHtml(s.squad), "📝 <b>Here's everyone</b>: where you're flying from, budgets, food and must-dos.\nAll good? 🔒 = I'll never break it", kb);
   }
 
   // ---------- Callbacks ----------
@@ -100,6 +100,7 @@ export class PlanningFlow {
     if (data === "heard_ok") {
       if (s.stage !== "heard") { await ctx.answerCallbackQuery({ text: "Already confirmed 👍" }); return true; }
       await ctx.answerCallbackQuery({ text: "Great, thanks!" });
+      f.heardDone = true;
       s.stage = "questions";
       s.decisions.push("Everyone's limits confirmed");
       s.pending = [];
@@ -256,6 +257,13 @@ export class PlanningFlow {
     f.question = q;
     await saveState(s);
     if (!q) {
+      // Everything's answered: show everyone's details once and let each person fix their own row.
+      if (!f.heardDone) {
+        s.stage = "heard";
+        s.pending = ["Everyone checks “what I heard”"];
+        await saveState(s);
+        return this.sendHeard(s);
+      }
       if (s.trip.destination) {
         s.stage = "solving";
         await saveState(s);

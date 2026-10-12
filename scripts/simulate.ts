@@ -68,11 +68,6 @@ const tapButton = async (who: string, match: (b: { data: string; text: string })
   print();
 };
 
-console.log("\n— Meera tries to fix Kabir's row —");
-await tapButton("Meera", (b) => b.data.startsWith("fix:") && b.text.includes("Kabir"));
-console.log("\n— Aarav confirms —");
-await tapButton("Aarav", (b) => b.data === "heard_ok");
-
 const homes: Record<string, string> = { Aarav: "Hyderabad", Meera: "Bengaluru", Kabir: "Delhi", Ishita: "Pune" };
 for (let i = 0; i < 16; i++) {
   const st = await loadState(tg.chatId);
@@ -93,6 +88,12 @@ for (let i = 0; i < 16; i++) {
   const answer = q.kind === "city" ? homes[who] : "none";
   await tapButton(who, (b) => b.data === `q:${q.memberId}:${answer}`);
 }
+
+console.log("\n— Everyone's details, once all questions are answered —");
+console.log("\n— Meera tries to fix Kabir's row —");
+await tapButton("Meera", (b) => b.data.startsWith("fix:") && b.text.includes("Kabir"));
+console.log("\n— Aarav confirms —");
+await tapButton("Aarav", (b) => b.data === "heard_ok");
 
 console.log("\n— The vote —");
 for (const who of ["Aarav", "Meera", "Kabir", "Ishita"]) {

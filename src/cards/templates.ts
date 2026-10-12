@@ -40,8 +40,8 @@ export type HeardRow = { name: string; city?: string; chips: { label: string; ha
 
 export function heardCard(rows: HeardRow[]): string {
   const body = `
-<p class="eyebrow">Here's what I heard</p>
-<h1 class="display" style="font-size:52px;line-height:1.1;margin:6px 0 24px">Everyone's limits, in one place</h1>
+<p class="eyebrow">The squad</p>
+<h1 class="display" style="font-size:52px;line-height:1.1;margin:6px 0 24px">Everyone's plans, in one place</h1>
 <div class="card">${rows
     .map(
       (r, i) => `
@@ -58,7 +58,7 @@ export function heardCard(rows: HeardRow[]): string {
                   : `<span class="pill" style="background:${colors.sandDeep};color:${colors.ink}">${esc(c.label)}</span>`,
               )
               .join("")
-          : `<span class="pill muted" style="border:2px dashed ${colors.line}">nothing yet</span>`
+          : `<span class="pill muted" style="border:2px dashed ${colors.line}">no limits</span>`
       }</div>
     </div>
   </div>`,
