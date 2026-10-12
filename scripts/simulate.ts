@@ -27,6 +27,8 @@ function print() {
     const buttons = (p.reply_markup as { inline_keyboard?: { text: string }[][] } | undefined)?.inline_keyboard?.flat().map((b) => `[${b.text}]`).join(" ");
     if (s.method === "sendMessage") console.log(`🤖 Milo: ${strip(String(p.text)).replace(/\n/g, "\n          ")}${buttons ? `\n          ${buttons}` : ""}`);
     else if (s.method === "editMessageText") console.log(`🤖 (edits msg ${p.message_id}) ${strip(String(p.text)).split("\n")[0]}…`);
+    else if (s.method === "editMessageCaption") console.log(`🤖 (updates card ${p.message_id}) ${strip(String(p.caption)).replace(/\n/g, "\n          ")}`);
+    else if (s.method === "deleteMessage") console.log(`🤖 (deletes msg ${p.message_id})`);
     else if (s.method === "setMessageReaction") console.log(`🤖 reacts 👀 to msg ${p.message_id}`);
     else if (s.method === "sendPhoto" || s.method === "sendMediaGroup") console.log(`🤖 [${s.method === "sendPhoto" ? "card" : `album of ${(p.media as unknown[]).length} cards`}] ${strip(String(p.caption ?? (p.media as { caption?: string }[])?.[0]?.caption ?? ""))}`);
     else if (s.method === "answerCallbackQuery" && p.text) console.log(`   (pop-up: ${p.text})`);

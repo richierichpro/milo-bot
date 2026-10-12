@@ -11,7 +11,7 @@ import type { Milo } from "./conversation.js";
 import { actsFor, mention, type PlanningFlow } from "./flow.js";
 import { loadState, saveState, type ChatState } from "./state.js";
 import { newQuickVote, quickTick, type QuickVote } from "./votes.js";
-import { hotelOptions, hotelVoteText, hotelWinner, letter, type HotelVote } from "./hotelvote.js";
+import { hotelButtons, hotelOptions, hotelVoteText, hotelWinner, letter, type HotelVote } from "./hotelvote.js";
 import { renderCard } from "../cards/render.js";
 import { hotelChoiceCard } from "../cards/templates.js";
 import { flightsHtml } from "./render.js";
@@ -253,7 +253,7 @@ export class SolvingFlow {
     );
     const png = (await renderCard(card)).png;
     const kb = new InlineKeyboard();
-    options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
+    for (const b of hotelButtons(v)) kb.text(b.text, b.data);
     const msg = await this.milo.send(chatId, () => api.sendPhoto(chatId, new InputFile(png, "stays.png"), { caption: hotelVoteText(v, pool.hotels, s.squad), parse_mode: "HTML", reply_markup: kb }));
     v.messageId = msg.message_id;
     await saveState(s);
@@ -283,7 +283,7 @@ export class SolvingFlow {
     const win = hotelWinner(v, s.squad.length);
     if (win !== undefined) v.done = true;
     const kb = new InlineKeyboard();
-    if (!v.done) v.options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
+    if (!v.done) for (const b of hotelButtons(v)) kb.text(b.text, b.data);
     if (v.messageId) await this.milo.bot.api.editMessageCaption(s.chatId, v.messageId, { caption: hotelVoteText(v, pool.hotels, s.squad), parse_mode: "HTML", reply_markup: v.done ? undefined : kb }).catch(() => {});
     if (win === undefined) { await saveState(s); return; }
     const pick = v.options[win];

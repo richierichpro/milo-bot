@@ -50,6 +50,14 @@ export function hotelVoteText(v: HotelVote, hotels: Hotel[], squad: SquadMember[
   return text.length <= 1024 ? text : text.replace(/<a href="[^"]*">([^<]*)<\/a>/g, "$1").slice(0, 1024);
 }
 
+/** Buttons 1/2/3 with the live count on each: "1 · 🗳 2". */
+export function hotelButtons(v: HotelVote): { text: string; data: string }[] {
+  return v.options.map((_, i) => {
+    const n = Object.values(v.votes).filter((x) => x === i).length;
+    return { text: `${letter(i)}${n ? ` · 🗳 ${n}` : ""}`, data: `hv:${v.id}:${i}` };
+  });
+}
+
 /** The vote is settled when everyone has voted, or one option has more than half the squad. Ties go to the cheaper stay. */
 export function hotelWinner(v: HotelVote, squadSize: number): number | undefined {
   const tally = v.options.map((_, i) => Object.values(v.votes).filter((x) => x === i).length);

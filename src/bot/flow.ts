@@ -19,7 +19,7 @@ const today = () => process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 
 
 /** city/dates go to one person; budget/food go to the whole group at once ("all"), each tap counted for whoever tapped. */
 type Question = { kind: "city" | "dates" | "budget" | "food"; memberId: string; messageId?: number; pending?: string[]; answers?: Record<string, string> };
-type FlowData = { heardDone?: boolean; fixing?: string; question?: Question; awaitingText?: Question; asked?: string[]; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
+type FlowData = { heardDone?: boolean; heardMsg?: number; cleanup?: number[]; fixing?: string; question?: Question; awaitingText?: Question; asked?: string[]; vote?: Vote; shortlist?: DestinationShortlist; receipts?: CallLogEntry[] };
 
 const flow = (s: ChatState) => s.data as FlowData;
 
@@ -87,7 +87,18 @@ export class PlanningFlow {
       kb.text(`✏️ Fix ${p.name}'s`, `fix:${p.id}`);
       if (i % 2) kb.row();
     });
-    await this.sendCard(s.chatId, heardHtml(s.squad), "📝 <b>Here's everyone</b>: where you're flying from, budgets, food and must-dos.\nAll good? 🔒 = I'll never break it", kb);
+    // The card replaces the questions it sums up (cities, budget, food) and any older copy of itself.
+    const f = flow(s);
+    for (const id of [...(f.cleanup ?? []), ...(f.heardMsg ? [f.heardMsg] : [])]) await this.milo.bot.api.deleteMessage(s.chatId, id).catch(() => {});
+    f.cleanup = [];
+    const msg = await this.sendCard(s.chatId, heardHtml(s.squad), "📝 <b>Here's everyone</b>: where you're flying from, budgets, food and must-dos.\nAll good? 🔒 = I'll never break it", kb);
+    f.heardMsg = msg.message_id;
+    await saveState(s);
+  }
+
+  /** A message the next squad card replaces. */
+  private tidy(s: ChatState, messageId: number) {
+    (flow(s).cleanup ??= []).push(messageId);
   }
 
   // ---------- Callbacks ----------
@@ -116,7 +127,8 @@ export class PlanningFlow {
       f.fixing = p.id;
       await saveState(s);
       await ctx.answerCallbackQuery();
-      await this.milo.say(s.chatId, `✏️ ${mention(p)}, what should I change?`);
+      this.tidy(s, (await this.milo.say(s.chatId, `✏️ ${mention(p)}, what should I change?`)).message_id);
+      await saveState(s);
       return true;
     }
 
@@ -130,7 +142,8 @@ export class PlanningFlow {
       if (value === "other") {
         f.awaitingText = f.question;
         await saveState(s);
-        await this.milo.say(s.chatId, `${mention(p)}, just type it here 👇`);
+        this.tidy(s, (await this.milo.say(s.chatId, `${mention(p)}, just type it here 👇`)).message_id);
+        await saveState(s);
         return true;
       }
       await this.answer(s, f.question!, value);
@@ -218,7 +231,8 @@ export class PlanningFlow {
       if (JSON.stringify([who.city, who.constraints]) === before) {
         f.fixing = who.id;
         await saveState(s);
-        await this.milo.say(s.chatId, `🤔 ${mention(who)}, I didn't catch a change. Try like “budget 20k”, “I'm veg” or “flying from Pune”.`);
+        this.tidy(s, (await this.milo.say(s.chatId, `🤔 ${mention(who)}, I didn't catch a change. Try like “budget 20k”, “I'm veg” or “flying from Pune”.`)).message_id);
+        await saveState(s);
         return true;
       }
       s.squad = [...others, s.squad.find((p) => p.id === who.id)!].sort((a, b) => s.squad.indexOf(a) - s.squad.indexOf(b));
@@ -291,6 +305,7 @@ export class PlanningFlow {
   private async ask(s: ChatState, q: Question, html: string, kb?: InlineKeyboard) {
     const msg = await this.milo.say(s.chatId, html, kb);
     q.messageId = msg.message_id;
+    this.tidy(s, msg.message_id);
     await saveState(s);
   }
 
@@ -335,7 +350,8 @@ export class PlanningFlow {
       await ctx.answerCallbackQuery();
       f.awaitingText = { ...q, memberId: p.id };
       await saveState(s);
-      await this.milo.say(s.chatId, `${mention(p)}, type it here 👇`);
+      this.tidy(s, (await this.milo.say(s.chatId, `${mention(p)}, type it here 👇`)).message_id);
+        await saveState(s);
       return true;
     }
     const next = mine.find((x) => x.id !== p.id);
