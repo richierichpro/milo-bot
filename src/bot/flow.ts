@@ -258,8 +258,9 @@ export class PlanningFlow {
       const hint = p.city && !resolveAirport(p.city) ? ` I don't know an airport for “${t.esc(p.city)}”${suggestCities(p.city).length ? `: did you mean ${suggestCities(p.city).map((x) => `<b>${t.esc(x)}</b>`).join(" or ")}?` : "."}` : "";
       return this.ask(s, q, `🛫 ${mention(p)}, which city are you flying from?${hint}`, kb);
     }
-    const kb = new InlineKeyboard().text("This weekend", `q:${p.id}:this_weekend`).text("Next weekend", `q:${p.id}:next_weekend`).row().text("Pick dates ✍️", `q:${p.id}:other`);
-    await this.ask(s, q, `📅 ${mention(p)}, which dates are we going?`, kb);
+    // Dates are typed: the next message from this person is the answer.
+    flow(s).awaitingText = q;
+    await this.ask(s, q, `📅 ${mention(p)}, which dates are we going? Just type them, like <i>20–23 Nov</i>`);
   }
 
   private async ask(s: ChatState, q: Question, html: string, kb?: InlineKeyboard) {

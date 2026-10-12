@@ -213,11 +213,8 @@ export class Milo {
     state.data.setup = "when";
     await saveState(state);
     await this.typing(state.chatId);
-    await this.say(
-      state.chatId,
-      "📅 <b>When?</b>",
-      new InlineKeyboard().text("This weekend", "setup:when:this_weekend").text("Next weekend", "setup:when:next_weekend").row().text("Pick dates ✍️", "setup:when:other"),
-    );
+    // Typed, not tapped: "20 to 23 Nov", "next weekend".
+    await this.say(state.chatId, "📅 <b>When?</b> Just type the dates, like <i>20–23 Nov</i>");
   }
 
   private async askExtras(state: ChatState) {
