@@ -97,6 +97,7 @@ Rules:
 - Keep each day in one area (use the @lat,lng). Meals at meal times (lunch 12:30–14:30, dinner 19:30–22:00). A beach or viewpoint near sunset. Respect opening hours shown.
 - On beach trips leave a free afternoon block on one day; after a late night, start the next day late.
 - Each place is tagged [do] (sights, nature, culture, activities), [eat] or [night]. Build every full day around at least ${MIN_DO_FULL_DAY} [do] stops: the destination's highlights plus a lesser-known gem (high rating, fewer reviews). Then at most 2 [eat] and 1 [night] per day.
+- Variety: never two [do] stops of the same category on one day, and at most 2 of one [do] category in the whole trip (e.g. two water-sports centres is the limit).
 - The group's interests, must-dos and preferences must be in the trip, but they aren't the whole trip.
 - If anyone is veg/jain, every full day needs at least one meal stop from the places marked [veg]. Include every must-do that is in the list.
 - Notes: at most 15 words, only facts present in that candidate's line (its category, description, rating words). No superlatives that aren't in its line (no "famous", "iconic", "best"), no numbers, no other place names. Describe events exactly as titled; a tribute or candlelight concert is never the artist performing.
@@ -260,6 +261,19 @@ export async function planTrip(
       const dos = day.stops.filter((s) => { const p = lookup.get(s.id); return !!p && ("title" in p || placeKind(p) === "do"); }).length;
       if (full && doAvailable >= MIN_DO_FULL_DAY * (d.days.length - 2) && dos < MIN_DO_FULL_DAY) out.push(`${day.date} has only ${dos} [do] stop${dos === 1 ? "" : "s"}; add sights or activities (at least ${MIN_DO_FULL_DAY}).`);
     });
+    const doCats = new Map<string, number>();
+    d.days.forEach((day) => {
+      const seen = new Set<string>();
+      for (const st of day.stops) {
+        const p = lookup.get(st.id);
+        if (!p || "title" in p || placeKind(p) !== "do") continue;
+        const cat = (p.category ?? "").toLowerCase();
+        if (seen.has(cat)) out.push(`${day.date} has two "${p.category}" stops; swap one for a different kind of sight or activity.`);
+        seen.add(cat);
+        doCats.set(cat, (doCats.get(cat) ?? 0) + 1);
+      }
+    });
+    for (const [cat, n] of doCats) if (n > 2) out.push(`${n} "${cat}" stops in the trip; keep at most 2 and use other sights instead.`);
     d.days.forEach((day) => {
       const pts = day.stops.map((s) => lookup.get(s.id)).filter((x): x is Place => !!x && "lat" in x);
       let spread = 0;

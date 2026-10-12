@@ -38,13 +38,12 @@ export class SolvingFlow {
   private async itinerary(chatId: number, sol: Solution, pool: CandidatePool) {
     const s = await loadState(chatId);
     await this.milo.bot.api.sendChatAction(chatId, "typing").catch(() => {});
-    const status = await this.milo.say(chatId, `🗺 Everyone's limits check out. Building the days…\n${bar(1, 4)}`);
+    const status = await this.milo.say(chatId, `🗺 Planning your trip…\n${bar(1, 5)}`);
     let step = 1;
     const plan = await planTrip(pool, tripOf(s), sol, s.squad, {
-      onProgress: (text) => void this.milo.bot.api.editMessageText(chatId, status.message_id, `🗺 ${esc(text.replace(/…$/, ""))}…\n${bar(++step, 5)}`).catch(() => {}),
+      onProgress: (text) => void this.milo.bot.api.editMessageText(chatId, status.message_id, `${friendly(text)}\n${bar(++step, 5)}`).catch(() => {}),
     });
-    const live = plan.receipts.filter((r) => r.source === "live").length;
-    await this.milo.send(chatId, () => this.milo.bot.api.editMessageText(chatId, status.message_id, `✓ ${plan.receipts.length} searches · ${live} live · ${plan.verification.verified}/${plan.verification.total} verified`)).catch(() => {});
+    await this.milo.bot.api.deleteMessage(chatId, status.message_id).catch(() => {});
     s.data.plan = plan;
     s.stage = "done";
     s.decisions.push(`Plan ready: ${plan.title}`);
@@ -77,7 +76,7 @@ export class SolvingFlow {
     await this.milo.bot.api.sendChatAction(chatId, "typing").catch(() => {});
 
     // One self-updating status message with a progress bar.
-    const status = await this.milo.say(chatId, `🔎 Searching flights, stays and places for ${esc(s.trip.destination ?? "")}…\n${bar(0, 1)}`);
+    const status = await this.milo.say(chatId, `✈️ Finding flights for everyone…\n${bar(0, 1)}`);
     let started = 0;
     let lastEdit = 0;
     const pool = await this.pool(s, (text) => {
@@ -85,12 +84,9 @@ export class SolvingFlow {
       const now = Date.now();
       if (now - lastEdit < 1200) return;
       lastEdit = now;
-      void this.milo.bot.api.editMessageText(chatId, status.message_id, `🔎 ${esc(text.replace(/…$/, ""))}…\n${bar(started, started + 4)}`).catch(() => {});
+      void this.milo.bot.api.editMessageText(chatId, status.message_id, `${friendly(text)}\n${bar(started, started + 4)}`).catch(() => {});
     });
-    const live = pool.receipts.filter((r) => r.source === "live").length;
-    await this.milo.send(chatId, () =>
-      this.milo.bot.api.editMessageText(chatId, status.message_id, `✓ ${pool.receipts.length} searches${live ? ` · ${live} live` : ""}${pool.errors.length ? ` · ${pool.errors.length} couldn't be checked` : ""}`),
-    ).catch(() => {});
+    await this.milo.bot.api.deleteMessage(chatId, status.message_id).catch(() => {});
     await this.check(s, pool);
   }
 
@@ -241,4 +237,16 @@ export class SolvingFlow {
     const pool = await this.pool(s);
     await this.check(s, pool);
   }
+}
+
+/** Progress in plain words: what Milo is doing for the group, not which search or model it's calling. */
+function friendly(step: string): string {
+  if (/flights/i.test(step)) return "✈️ Finding flights for everyone…";
+  if (/hotels/i.test(step)) return "🏨 Finding a stay that fits…";
+  if (/maps|places/i.test(step)) return "📍 Finding the best things to do…";
+  if (/transfer/i.test(step)) return "🗺 Planning your trip…";
+  if (/arrange/i.test(step)) return "🧭 Building your itinerary…";
+  if (/checking every/i.test(step)) return "✅ Double-checking everything…";
+  if (/travel times/i.test(step)) return "🚕 Working out travel times…";
+  return "🗺 Planning your trip…";
 }
