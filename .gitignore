@@ -10,3 +10,4 @@ coverage/
 .data-record/
 .data-sim/
 .data-steps/
+.env.local.bak
