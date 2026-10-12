@@ -14,6 +14,7 @@ import { newQuickVote, quickTick, type QuickVote } from "./votes.js";
 import { hotelOptions, hotelVoteText, hotelWinner, letter, type HotelVote } from "./hotelvote.js";
 import { renderCard } from "../cards/render.js";
 import { hotelChoiceCard } from "../cards/templates.js";
+import { flightsHtml } from "./render.js";
 
 // Solve within everyone's limits; when a hard limit breaks, ask only the person
 // affected, with 2–3 real options. Changes that touch everyone get a quick 👍/👎.
@@ -23,6 +24,7 @@ type SolveData = {
   asking?: { memberId: string; options: Compromise[] };
   quick?: QuickVote & { option: Compromise; by: string };
   hotelVote?: HotelVote;
+  flightsShown?: boolean;
 };
 const sd = (s: ChatState) => ((s.data.solve ??= {}) as SolveData);
 const tripOf = (s: ChatState): Trip => ({ destination: s.trip.destination!, startDate: s.trip.startDate!, endDate: s.trip.endDate!, interests: s.trip.interests });
@@ -222,6 +224,8 @@ export class SolvingFlow {
     await this.milo.updateTripCard(s);
     const chatId = s.chatId;
     const api = this.milo.bot.api;
+    // Flights first: everyone sees how they get there, then the group picks the stay.
+    if (!sd(s).flightsShown) await this.showFlights(s, sol);
     await api.sendChatAction(chatId, "upload_photo").catch(() => {});
     // One card with all three stays; the vote buttons sit right under it.
     const hotels = options.map((o) => pool.hotels.find((h) => h.id === o.hotelId)!);
@@ -235,6 +239,23 @@ export class SolvingFlow {
     options.forEach((_, i) => kb.text(letter(i), `hv:${v.id}:${i}`));
     const msg = await this.milo.send(chatId, () => api.sendPhoto(chatId, new InputFile(png, "stays.png"), { caption: hotelVoteText(v, pool.hotels, s.squad), parse_mode: "HTML", reply_markup: kb }));
     v.messageId = msg.message_id;
+    await saveState(s);
+  }
+
+  private async showFlights(s: ChatState, sol: Solution) {
+    const chatId = s.chatId;
+    await this.milo.bot.api.sendChatAction(chatId, "upload_photo").catch(() => {});
+    const png = (await renderCard(flightsHtml(s.trip.destination ?? "", sol.flights, sol.extraVsCheapest))).png;
+    const clock = (t?: string) => t?.slice(11, 16) ?? "?";
+    const rows = sol.flights.map((f) =>
+      f.out ? `<b>${esc(f.person)}</b>: <code>${esc(f.out.from)} ${clock(f.out.departTime)} → ${esc(f.out.to)} ${clock(f.out.arriveTime)}</code>${f.back ? ` · back <code>${clock(f.back.departTime)}</code>` : ""}` : `<b>${esc(f.person)}</b>: no flight found`,
+    );
+    const w = sol.arrivalWindow;
+    const spread = w ? Math.round((Date.parse(`${w.last.replace(" ", "T")}:00Z`) - Date.parse(`${w.first.replace(" ", "T")}:00Z`)) / 60_000) : undefined;
+    const together = spread !== undefined && spread >= 0 && spread <= 120 ? ` · everyone lands within <b>${spread < 60 ? `${spread} min` : `${Math.floor(spread / 60)}h ${spread % 60}m`}</b>` : "";
+    const caption = `✈️ <b>Your flights</b>${together}\n\n${rows.join("\n")}`.slice(0, 1024);
+    await this.milo.send(chatId, () => this.milo.bot.api.sendPhoto(chatId, new InputFile(png, "flights.png"), { caption, parse_mode: "HTML" }));
+    sd(s).flightsShown = true;
     await saveState(s);
   }
 
