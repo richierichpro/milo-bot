@@ -169,6 +169,17 @@ export class PlanningFlow {
   /** Typed answers: a fix to someone's limits, or an "Other" reply. Returns true when handled. */
   private async onMessage(s: ChatState, heard: Heard): Promise<boolean> {
     const f = flow(s);
+    const g = f.question;
+    if (g?.memberId === "all" && g.kind === "budget") {
+      const value = typedBudget(heard.text);
+      const mine = (g.pending ?? []).map((id) => s.squad.find((p) => p.id === id)!).filter((p) => p && actsFor(p, heard.userId));
+      const p = mine.find((x) => x.telegramUserId === heard.userId) ?? mine[0];
+      if (value && p) {
+        await this.milo.bot.api.setMessageReaction(s.chatId, heard.messageId, [{ type: "emoji", emoji: "👍" }]).catch(() => {});
+        await this.recordPick(s, g, p, value);
+        return true;
+      }
+    }
     const who = s.squad.find((p) => actsFor(p, heard.userId) && (p.id === f.fixing || p.id === f.awaitingText?.memberId));
     if (!who) return false;
     if (f.fixing === who.id) {
@@ -251,7 +262,7 @@ export class PlanningFlow {
     await this.ask(s, q, `📅 ${mention(p)}, which dates are we going?`, kb);
   }
 
-  private async ask(s: ChatState, q: Question, html: string, kb: InlineKeyboard) {
+  private async ask(s: ChatState, q: Question, html: string, kb?: InlineKeyboard) {
     const msg = await this.milo.say(s.chatId, html, kb);
     q.messageId = msg.message_id;
     await saveState(s);
@@ -265,14 +276,15 @@ export class PlanningFlow {
 
   // ---------- Group questions: everyone taps their own answer ----------
 
-  private groupKeyboard(q: Question): InlineKeyboard {
+  private groupKeyboard(q: Question): InlineKeyboard | undefined {
+    // Budgets are typed ("30k", "no limit"); food is a tap.
     return q.kind === "budget"
-      ? new InlineKeyboard().text("₹10k", "q:all:10000").text("₹15k", "q:all:15000").text("₹20k", "q:all:20000").row().text("No limit", "q:all:none").text("Other ✍️", "q:all:other")
+      ? undefined
       : new InlineKeyboard().text("Veg", "q:all:veg").text("Non-veg", "q:all:none").text("Jain", "q:all:jain").row().text("No preference", "q:all:none");
   }
 
   private groupText(s: ChatState, q: Question): string {
-    const head = q.kind === "budget" ? "💸 <b>What's your max for the whole trip?</b> Tap yours 👇" : "🍽 <b>Any food needs?</b> Tap yours 👇";
+    const head = q.kind === "budget" ? "💸 <b>What's your max for the whole trip?</b> Just type it, like 25k or no limit" : "🍽 <b>Any food needs?</b> Tap yours 👇";
     const done = Object.entries(q.answers ?? {}).map(([id, label]) => `${t.esc(s.squad.find((p) => p.id === id)?.name ?? "?")}: ${label}`);
     const waiting = (q.pending ?? []).map((id) => s.squad.find((p) => p.id === id)).filter(Boolean).map((p) => mention(p!));
     return [head, done.length ? `✅ ${done.join(" · ")}` : "", waiting.length ? `⏳ ${waiting.join(", ")}` : ""].filter(Boolean).join("\n");
@@ -327,7 +339,7 @@ export class PlanningFlow {
     if (!group.messageId) return;
     const finished = !group.pending.length;
     await this.milo.bot.api
-      .editMessageText(s.chatId, group.messageId, this.groupText(s, group), { parse_mode: "HTML", reply_markup: finished ? new InlineKeyboard() : this.groupKeyboard(group) })
+      .editMessageText(s.chatId, group.messageId, this.groupText(s, group), { parse_mode: "HTML", reply_markup: finished ? undefined : this.groupKeyboard(group) })
       .catch(() => {});
     if (finished) {
       await this.milo.updateTripCard(s);
@@ -477,4 +489,16 @@ function weekend(value: string): [string, string] | undefined {
   const fri = new Date(d.getTime() + toFri * 86_400_000);
   const sun = new Date(fri.getTime() + 2 * 86_400_000);
   return [fri.toISOString().slice(0, 10), sun.toISOString().slice(0, 10)];
+}
+
+/** A typed budget: "30000 is my budget", "25k", "₹30,000", "1.5 lakh", "no limit". Undefined when it isn't one. */
+export function typedBudget(text: string): string | undefined {
+  const x = text.toLowerCase().replace(/[,₹]/g, "");
+  if (/\b(no limit|no budget|unlimited|no cap|anything)\b/.test(x)) return "none";
+  const m = x.match(/(\d+(?:\.\d+)?)\s*(k|thousand|l|lakh|lac)?\b/);
+  if (!m) return undefined;
+  const num = Number(m[1]);
+  // A bare small number ("30") means thousands.
+  const n = num * (m[2]?.startsWith("l") ? 100_000 : m[2] || num < 1000 ? 1000 : 1);
+  return n >= 1000 ? String(Math.round(n)) : undefined;
 }
