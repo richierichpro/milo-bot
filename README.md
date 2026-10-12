@@ -4,6 +4,8 @@
 
 Built for the SerpApi India Hackathon 2026 · Travel & Local Discovery.
 
+**🌐 Try the web app version:** https://milo-858q.onrender.com ([code](https://github.com/richierichpro/milo))
+
 ## The problem
 
 A 2026 survey found that **76% of group trips never make it out of the group chat** (Talker Research). Everyone says *chalo!*, then the plan dies, because each friend's limits are scattered across the messages: Ishita's budget is "15k max", Kabir has "office till 6 on Friday", Meera is veg. Nobody wants to be the planner who has to collect all that, search flights from four cities and find something that fits everyone.
