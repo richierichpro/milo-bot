@@ -34,6 +34,9 @@ export function weekendRange(value: string, from = process.env.MILO_TODAY ?? new
 }
 const today = () => process.env.MILO_TODAY ?? new Date().toISOString().slice(0, 10);
 
+/** The pinned Trip card is switched off; the code stays in case it comes back. */
+const TRIP_CARD = false;
+
 export class Milo {
   readonly hooks: Hooks = {
     onPlanNow: async (chatId) => {
@@ -72,13 +75,13 @@ export class Milo {
     return this.send(chatId, () => this.bot.api.sendMessage(chatId, html, { parse_mode: "HTML", reply_markup: keyboard, link_preview_options: { is_disabled: true } }));
   }
 
-  /** Create or edit the pinned Trip card. If Milo can't pin, it just keeps the message. */
+  /** Create or edit the pinned Trip card (switched off with TRIP_CARD). If Milo can't pin, it just keeps the message. */
   async updateTripCard(state: ChatState) {
     const text = tripCardText(state);
     const kb = tripCardKeyboard(state, enoughToPlan(state));
+    // Off: the Heard card, questions and plan cards already show where things are (the user found it noise).
+    if (!TRIP_CARD) return;
     const card = state.tripCard;
-    // Nothing worth pinning while Milo is only listening: the card first appears once planning starts.
-    if (!card && (state.stage === "intro" || state.stage === "listening")) return;
     if (card) {
       try {
         await this.send(state.chatId, () => this.bot.api.editMessageText(state.chatId, card.messageId, text, { parse_mode: "HTML", reply_markup: kb }));
@@ -140,7 +143,7 @@ export class Milo {
         state.paused = data === "pause";
         await saveState(state);
         await ctx.answerCallbackQuery({ text: state.paused ? "Milo is paused" : "Milo is back" });
-        await this.say(chatId, state.paused ? "⏸ Paused. I won't read the chat until someone taps <b>Resume Milo</b> on the Trip card." : "▶️ Back! I'm listening again.");
+        await this.say(chatId, state.paused ? "⏸ Paused. Say <b>Milo, come back</b> when you want me again." : "▶️ Back! I'm listening again.");
         return this.updateTripCard(state);
       }
       if (data.startsWith("undo:")) return this.undo(ctx, state, data.slice(5));
@@ -152,7 +155,15 @@ export class Milo {
       if (ctx.chat.type !== "group" && ctx.chat.type !== "supergroup") return;
       if (ctx.message.text.startsWith("/")) return;
       const state = await loadState(ctx.chat.id);
-      if (state.paused) return;
+      if (state.paused) {
+        // Paused Milo only listens for its name and a nudge to come back.
+        if (/\bmilo\b/i.test(ctx.message.text) && /\b(back|resume|continue|start|unpause|wake)\b/i.test(ctx.message.text)) {
+          state.paused = false;
+          await saveState(state);
+          await this.say(ctx.chat.id, "▶️ Back! I'm listening again.");
+        }
+        return;
+      }
       const from = ctx.from;
       const heard: Heard = { messageId: ctx.message.message_id, userId: from.id, name: from.first_name, text: ctx.message.text };
       this.knownChats.add(state.chatId);
@@ -223,7 +234,7 @@ export class Milo {
     await saveState(state);
     await this.updateTripCard(state);
     await this.typing(state.chatId);
-    await this.say(state.chatId, "Anything else? 💸 budgets, 🍽 food, 📌 must-dos…\nOr I'll start 👇", new InlineKeyboard().text("Plan it now 🗺", "plan_now"));
+    await this.say(state.chatId, "Anything else? 📌 must-dos, things to skip, the vibe…\nOr I'll start 👇", new InlineKeyboard().text("Plan it now 🗺", "plan_now"));
   }
 
   private async onSetup(ctx: Context, state: ChatState, action: string) {
@@ -345,7 +356,7 @@ export class Milo {
     if (applied.intents.some((i) => i.kind === "pause")) {
       state.paused = true;
       await saveState(state);
-      return this.say(chatId, "⏸ Paused. Tap <b>Resume Milo</b> on the Trip card when you want me back.");
+      return this.say(chatId, "⏸ Paused. Say <b>Milo, come back</b> when you want me again.");
     }
     // Step by step: move on when the chat answered the current question.
     const setup = state.data.setup;
